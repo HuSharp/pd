@@ -43,9 +43,9 @@ func (s testReceiver) Send(m *pdpb.WatchGlobalConfigResponse) error {
 	for _, change := range m.GetChanges() {
 		switch change.GetKind() {
 		case pdpb.EventType_PUT:
-			s.re.Contains(change.Name, globalConfigPath+change.Value)
+			s.re.Contains(change.Name, globalConfigPath+string(change.ValuePayload))
 		case pdpb.EventType_DELETE:
-			s.re.Empty(change.Value)
+			s.re.Empty(change.ValuePayload)
 		}
 	}
 	return nil
@@ -98,7 +98,7 @@ func (suite *globalConfigTestSuite) TestLoad() {
 	suite.NoError(err)
 	suite.Len(res.Items, 1)
 	suite.Equal(r.Header.GetRevision(), res.Revision)
-	suite.Equal("test", res.Items[0].Value)
+	suite.Equal("test", string(res.Items[0].ValuePayload))
 }
 
 func (suite *globalConfigTestSuite) TestStore() {
@@ -108,7 +108,7 @@ func (suite *globalConfigTestSuite) TestStore() {
 			suite.NoError(err)
 		}
 	}()
-	changes := []*pdpb.GlobalConfigItem{{Kind: pdpb.EventType_PUT, Name: "0", Value: "0"}, {Kind: pdpb.EventType_PUT, Name: "1", Value: "1"}, {Kind: pdpb.EventType_PUT, Name: "2", Value: "2"}}
+	changes := []*pdpb.GlobalConfigItem{{Kind: pdpb.EventType_PUT, Name: "0", ValuePayload: []byte("0")}, {Kind: pdpb.EventType_PUT, Name: "1", ValuePayload: []byte("1")}, {Kind: pdpb.EventType_PUT, Name: "2", ValuePayload: []byte("2")}}
 	_, err := suite.server.StoreGlobalConfig(suite.server.Context(), &pdpb.StoreGlobalConfigRequest{
 		ConfigPath: globalConfigPath,
 		Changes:    changes,

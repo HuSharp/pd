@@ -1888,7 +1888,11 @@ func (s *GrpcServer) StoreGlobalConfig(_ context.Context, request *pdpb.StoreGlo
 		name := item.GetName()
 		switch item.GetKind() {
 		case pdpb.EventType_PUT:
-			ops[i] = clientv3.OpPut(s.GetFinalPathWithinPD(request.GetConfigPath()+name), item.GetValue())
+			value := item.GetValue()
+			if len(value) == 0 {
+				value = string(item.GetValuePayload())
+			}
+			ops[i] = clientv3.OpPut(s.GetFinalPathWithinPD(request.GetConfigPath()+name), value)
 		case pdpb.EventType_DELETE:
 			ops[i] = clientv3.OpDelete(s.GetFinalPathWithinPD(request.GetConfigPath() + name))
 		}
