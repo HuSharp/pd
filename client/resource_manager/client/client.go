@@ -34,9 +34,9 @@ const (
 
 // ResourceGroupKVInterceptor is used as quato limit controller for resource group using kv store.
 type ResourceGroupKVInterceptor interface {
-	// OnRequestWait is used to check whether resource group has enough tokens. It maybe needs wait some time.
+	// OnRequestWait is used to check whether the resource group has enough tokens. It maybe needs to wait sometime.
 	OnRequestWait(ctx context.Context, resourceGroupName string, info RequestInfo) error
-	// OnResponse is used to consume tokens atfer receiving response
+	// OnResponse is used to consume tokens after receiving response
 	OnResponse(ctx context.Context, resourceGroupName string, req RequestInfo, resp ResponseInfo) error
 }
 
@@ -179,11 +179,11 @@ func (c *ResourceGroupsController) initRunState() {
 	})
 }
 
-func (c *ResourceGroupsController) updateRunState(ctx context.Context) {
+func (c *ResourceGroupsController) updateRunState() {
 	c.run.now = time.Now()
 	c.groupsController.Range(func(name, value any) bool {
 		gc := value.(*groupCostController)
-		gc.updateRunState(ctx)
+		gc.updateRunState()
 		return true
 	})
 }
@@ -272,7 +272,7 @@ func (c *ResourceGroupsController) mainLoop(ctx context.Context) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	c.updateRunState(ctx)
+	c.updateRunState()
 	c.collectTokenBucketRequests(ctx, "init", false /* select all */)
 
 	for {
@@ -282,21 +282,21 @@ func (c *ResourceGroupsController) mainLoop(ctx context.Context) {
 		case resp := <-c.tokenResponseChan:
 			c.run.requestInProgress = false
 			if resp != nil {
-				c.updateRunState(ctx)
+				c.updateRunState()
 				c.handleTokenBucketResponse(resp)
 			} else {
 				// A nil response indicates a failure (which would have been logged).
 				c.run.requestNeedsRetry = true
 			}
 		case <-ticker.C:
-			c.updateRunState(ctx)
+			c.updateRunState()
 			c.updateAvgRequestResourcePerSec()
 			if c.run.requestNeedsRetry || c.shouldReportConsumption() {
 				c.run.requestNeedsRetry = false
 				c.collectTokenBucketRequests(ctx, "report", false /* select all */)
 			}
 		case <-c.lowTokenNotifyChan:
-			c.updateRunState(ctx)
+			c.updateRunState()
 			c.updateAvgRequestResourcePerSec()
 			if !c.run.requestInProgress {
 				c.collectTokenBucketRequests(ctx, "low_ru", true /* only select low tokens resource group */)
@@ -308,7 +308,7 @@ func (c *ResourceGroupsController) mainLoop(ctx context.Context) {
 	}
 }
 
-// OnRequestWait is used to check whether resource group has enough tokens. It maybe needs wait some time.
+// OnRequestWait is used to check whether the resource group has enough tokens. It maybe needs to wait sometime.
 func (c *ResourceGroupsController) OnRequestWait(
 	ctx context.Context, resourceGroupName string, info RequestInfo,
 ) (err error) {
@@ -458,32 +458,15 @@ func (gc *groupCostController) initRunState() {
 	}
 }
 
-func (gc *groupCostController) updateRunState(ctx context.Context) {
+func (gc *groupCostController) updateRunState() {
 	newTime := time.Now()
-	deltaConsumption := &rmpb.Consumption{}
-	for _, calc := range gc.calculators {
-		calc.Trickle(ctx, deltaConsumption)
-	}
 	gc.mu.Lock()
-	add(gc.mu.consumption, deltaConsumption)
+	for _, calc := range gc.calculators {
+		calc.Trickle(gc.mu.consumption)
+	}
 	*gc.run.consumption = *gc.mu.consumption
 	gc.mu.Unlock()
-	// remove tokens
-	switch gc.mode {
-	case rmpb.GroupMode_RUMode:
-		for typ, counter := range gc.run.requestUnitTokens {
-			if v := getRUValueFromConsumption(deltaConsumption, typ); v > 0 {
-				counter.limiter.RemoveTokens(newTime, v)
-			}
-		}
-	case rmpb.GroupMode_RawMode:
-		for typ, counter := range gc.run.resourceTokens {
-			if v := getRawResourceValueFromConsumption(deltaConsumption, typ); v > 0 {
-				counter.limiter.RemoveTokens(newTime, v)
-			}
-		}
-	}
-	log.Debug("update run state", zap.Any("request unit consumption", gc.run.consumption))
+	log.Debug("[resource group controller] update run state", zap.Any("request unit consumption", gc.run.consumption))
 	gc.run.now = newTime
 }
 
