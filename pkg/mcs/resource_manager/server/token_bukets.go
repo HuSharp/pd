@@ -137,6 +137,7 @@ func (gts *GroupTokenBucketState) balanceSlotTokens(
 	}
 
 	evenRatio := 1 / float64(len(gts.tokenSlots))
+	var consumption float64
 retryLoop:
 	for clientID, slot := range gts.tokenSlots {
 		// Clean up those slot that have not been used for a long time.
@@ -144,6 +145,7 @@ retryLoop:
 			delete(gts.tokenSlots, clientID)
 			evenRatio = 1 / float64(len(gts.tokenSlots))
 			gts.cleanupAssignTokenSum()
+			consumption = 0
 			continue retryLoop
 		}
 
@@ -167,12 +169,14 @@ retryLoop:
 		}
 		// update assign token sum
 		slot.assignTokensSum += assignToken
-		gts.assignTokensSum += assignToken
+		consumption += assignToken
 		if gts.assignTokensSum >= maxAssignTokens {
 			gts.cleanupAssignTokenSum()
+			consumption = 0
 			continue retryLoop
 		}
 	}
+	gts.assignTokensSum += consumption
 }
 
 // NewGroupTokenBucket returns a new GroupTokenBucket
