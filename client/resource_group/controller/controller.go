@@ -345,7 +345,7 @@ func (c *ResourceGroupsController) sendTokenBucketRequests(ctx context.Context, 
 		TargetRequestPeriodMs: uint64(defaultTargetPeriod / time.Millisecond),
 	}
 	go func() {
-		log.Debug("[resource group controller] send token bucket request", zap.Time("now", now), zap.Any("req", req.Requests), zap.String("source", source))
+		log.Info("[resource group controller] send token bucket request", zap.Time("now", now), zap.Any("req", req.Requests), zap.String("source", source))
 		resp, err := c.provider.AcquireTokenBuckets(ctx, req)
 		if err != nil {
 			// Don't log any errors caused by the stopper canceling the context.
@@ -354,7 +354,7 @@ func (c *ResourceGroupsController) sendTokenBucketRequests(ctx context.Context, 
 			}
 			resp = nil
 		}
-		log.Debug("[resource group controller] token bucket response", zap.Time("now", time.Now()), zap.Any("resp", resp), zap.String("source", source), zap.Duration("latency", time.Since(now)))
+		log.Info("[resource group controller] token bucket response", zap.Time("now", time.Now()), zap.Any("resp", resp), zap.String("source", source), zap.Duration("latency", time.Since(now)))
 		c.tokenResponseChan <- resp
 	}()
 }
@@ -793,10 +793,12 @@ func (gc *groupCostController) collectRequestAndConsumption(onlySelectLow bool) 
 			if onlySelectLow && counter.limiter.IsLowTokens() {
 				selected = true
 			}
+			val := gc.calcRequest(counter)
 			request := &rmpb.RequestUnitItem{
 				Type:  typ,
-				Value: gc.calcRequest(counter),
+				Value: val,
 			}
+			log.Info("collectRequestAndConsumption val", zap.Float64("Val", val))
 			requests = append(requests, request)
 		}
 		req.Request = &rmpb.TokenBucketRequest_RuItems{
@@ -820,7 +822,9 @@ func (gc *groupCostController) collectRequestAndConsumption(onlySelectLow bool) 
 
 func (gc *groupCostController) calcRequest(counter *tokenCounter) float64 {
 	value := counter.avgRUPerSec*gc.run.targetPeriod.Seconds() + bufferRUs
+	log.Info("calcRequest", zap.Float64("val", value), zap.Float64("avg", counter.avgRUPerSec), zap.Float64("target period", gc.run.targetPeriod.Seconds()))
 	value -= counter.limiter.AvailableTokens(gc.run.now)
+	log.Info("calcRequest", zap.Float64("val", value))
 	if value < 0 {
 		value = 0
 	}

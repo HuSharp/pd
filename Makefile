@@ -19,6 +19,7 @@ PD_EDITION ?= Community
 # Ensure PD_EDITION is set to Community or Enterprise before running build process.
 ifneq "$(PD_EDITION)" "Community"
 ifneq "$(PD_EDITION)" "Enterprise"
+ifneq "$(PD_EDITION)" "Enterprise"
   $(error Please set the correct environment variable PD_EDITION before running `make`)
 endif
 endif
