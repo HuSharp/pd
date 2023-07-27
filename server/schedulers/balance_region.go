@@ -170,7 +170,7 @@ func (s *balanceRegionScheduler) Schedule(cluster schedule.Cluster, dryRun bool)
 	case *schedule.RangeCluster:
 		// allow empty region to be scheduled in range cluster
 	default:
-		baseRegionFilters = append(baseRegionFilters, filter.NewRegionEmptyFilter(cluster))
+		// baseRegionFilters = append(baseRegionFilters, filter.NewRegionEmptyFilter(cluster))
 	}
 
 	if collector != nil && len(sourceStores) > 0 {
