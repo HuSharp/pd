@@ -364,9 +364,9 @@ func (s *Server) startEtcd(ctx context.Context) error {
 		},
 	}
 
-	failpoint.Inject("memberNil", func() {
+	if _, _err_ := failpoint.Eval(_curpkg_("memberNil")); _err_ == nil {
 		time.Sleep(1500 * time.Millisecond)
-	})
+	}
 	s.member = member.NewMember(etcd, client, etcdServerID)
 	return nil
 }
@@ -717,7 +717,7 @@ func (s *Server) createRaftCluster() error {
 }
 
 func (s *Server) stopRaftCluster() {
-	failpoint.Inject("raftclusterIsBusy", func() {})
+	failpoint.Eval(_curpkg_("raftclusterIsBusy"))
 	s.cluster.Stop()
 }
 
@@ -1465,11 +1465,11 @@ func (s *Server) campaignLeader() {
 	}
 	defer func() {
 		s.tsoAllocatorManager.ResetAllocatorGroup(tso.GlobalDCLocation)
-		failpoint.Inject("updateAfterResetTSO", func() {
+		if _, _err_ := failpoint.Eval(_curpkg_("updateAfterResetTSO")); _err_ == nil {
 			if err = allocator.UpdateTSO(); err != nil {
 				panic(err)
 			}
-		})
+		}
 	}()
 
 	if err := s.reloadConfigFromKV(); err != nil {
@@ -1527,14 +1527,14 @@ func (s *Server) campaignLeader() {
 				return
 			}
 			// add failpoint to test exit leader, failpoint judge the member is the give value, then break
-			failpoint.Inject("exitCampaignLeader", func(val failpoint.Value) {
+			if val, _err_ := failpoint.Eval(_curpkg_("exitCampaignLeader")); _err_ == nil {
 				memberString := val.(string)
 				memberID, _ := strconv.ParseUint(memberString, 10, 64)
-				if s.member.ID() == memberID {
-					log.Info("exit PD leader")
-					failpoint.Return()
+				if memberID == s.member.ID() {
+					log.Info("exit PD leader", zap.Uint64("member-id", s.member.ID()))
+					return
 				}
-			})
+			}
 		case <-ctx.Done():
 			// Server is closed and it should return nil.
 			log.Info("server is closed")
