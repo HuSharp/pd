@@ -239,6 +239,11 @@ func (c *pdServiceDiscovery) updateMemberLoop() {
 	ticker := time.NewTicker(memberUpdateInterval)
 	defer ticker.Stop()
 
+	// max retry backoff time is 1 * Second
+	// recalculate backoff time: (2+4+8+10*n)*100 = 1.4+1*n(s)
+	backOffBaseTime := 100 * time.Millisecond
+	backOffTime := backOffBaseTime
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -251,8 +256,32 @@ func (c *pdServiceDiscovery) updateMemberLoop() {
 		})
 		if err := c.updateMember(); err != nil {
 			log.Error("[pd] failed to update member", zap.Strings("urls", c.GetServiceURLs()), errs.ZapError(err))
+			if backOffTime > updateMemberTimeout {
+				backOffTime = updateMemberTimeout
+			} else {
+				backOffTime *= 2
+			}
+			select {
+			case <-time.After(backOffTime):
+				failpoint.Inject("backOffExecute", func() {
+					testBackOffExecuteFlag = true
+				})
+			case <-ctx.Done():
+				log.Info("[pd.reconnectLoop] exit backOff")
+				return
+			}
+		} else {
+			backOffTime = backOffBaseTime
 		}
 	}
+}
+
+// Only used for test.
+var testBackOffExecuteFlag = false
+
+// TestBackOffExecute Only used for test.
+func TestBackOffExecute() bool {
+	return testBackOffExecuteFlag
 }
 
 func (c *pdServiceDiscovery) updateServiceModeLoop() {
