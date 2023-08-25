@@ -1420,6 +1420,7 @@ func (s *Server) leaderLoop() {
 			continue
 		}
 		if leader != nil {
+			log.Info("check leader ok", zap.Stringer("leader", leader))
 			err := s.reloadConfigFromKV()
 			if err != nil {
 				log.Error("reload config failed", errs.ZapError(err))

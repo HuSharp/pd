@@ -131,6 +131,7 @@ func (s *RegionSyncer) StartSyncWithLeader(addr string) {
 			log.Warn("failed to load regions.", errs.ZapError(err))
 		}
 		// establish client.
+		log.Info("establish connection with leader", zap.String("server", s.server.Name()), zap.String("leader", s.server.GetLeader().GetName()))
 		var conn *grpc.ClientConn
 		for {
 			select {
@@ -143,10 +144,12 @@ func (s *RegionSyncer) StartSyncWithLeader(addr string) {
 				log.Error("cannot establish connection with leader", zap.String("server", s.server.Name()), zap.String("leader", s.server.GetLeader().GetName()), errs.ZapError(err))
 				continue
 			}
+			log.Info("established connection with leader2", zap.String("server", s.server.Name()), zap.String("leader", s.server.GetLeader().GetName()))
 			break
 		}
 		defer conn.Close()
 
+		log.Info("start to sync region111", zap.String("server", s.server.Name()), zap.String("leader", s.server.GetLeader().GetName()))
 		// Start syncing data.
 		for {
 			select {
@@ -155,6 +158,7 @@ func (s *RegionSyncer) StartSyncWithLeader(addr string) {
 			default:
 			}
 
+			log.Info("[syncRegion] sync region", zap.String("server", s.server.Name()), zap.String("leader", s.server.GetLeader().GetName()))
 			stream, err := s.syncRegion(ctx, conn)
 			if err != nil {
 				if ev, ok := status.FromError(err); ok {
@@ -193,6 +197,7 @@ func (s *RegionSyncer) StartSyncWithLeader(addr string) {
 				regionLeaders := resp.GetRegionLeaders()
 				hasStats := len(stats) == len(regions)
 				hasBuckets := len(buckets) == len(regions)
+				log.Info("sync region now!", zap.Any("len", regions), zap.Uint64("request-index", s.history.GetNextIndex()), zap.Uint64("response-index", resp.GetStartIndex()))
 				for i, r := range regions {
 					var (
 						region       *core.RegionInfo
@@ -201,7 +206,9 @@ func (s *RegionSyncer) StartSyncWithLeader(addr string) {
 					if len(regionLeaders) > i && regionLeaders[i].GetId() != 0 {
 						regionLeader = regionLeaders[i]
 					}
+					log.Info("region stats", zap.Int("stats-length", len(stats)), zap.Int("regions-length", len(regions)))
 					if hasStats {
+						log.Info("region stats1", zap.Stringer("region", r), zap.Stringer("leader", regionLeader), zap.Reflect("stats", stats[i]))
 						region = core.NewRegionInfo(r, regionLeader,
 							core.SetWrittenBytes(stats[i].BytesWritten),
 							core.SetWrittenKeys(stats[i].KeysWritten),
@@ -210,14 +217,16 @@ func (s *RegionSyncer) StartSyncWithLeader(addr string) {
 							core.SetFromHeartbeat(false),
 						)
 					} else {
+						log.Info("region stats2", zap.Stringer("leader", regionLeader), zap.Reflect("stats", stats), zap.Any("regions", regions))
 						region = core.NewRegionInfo(r, regionLeader, core.SetFromHeartbeat(false))
 					}
 
 					origin, err := bc.PreCheckPutRegion(region)
 					if err != nil {
-						log.Debug("region is stale", zap.Stringer("origin", origin.GetMeta()), errs.ZapError(err))
+						log.Info("region is stale", zap.Stringer("origin", origin.GetMeta()), errs.ZapError(err))
 						continue
 					}
+					log.Info("region is ok", zap.Stringer("origin", origin.GetMeta()))
 					_, saveKV, _, _ := regionGuide(region, origin)
 					overlaps := bc.PutRegion(region)
 
