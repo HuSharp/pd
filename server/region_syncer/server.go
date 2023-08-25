@@ -233,6 +233,7 @@ func (s *RegionSyncer) syncHistoryRegion(ctx context.Context, request *pdpb.Sync
 		}
 		// do full synchronization
 		if startIndex == 0 {
+			log.Info("requested server has no history regions, start to sync all regions", zap.Any("request", request))
 			regions := s.server.GetRegions()
 			lastIndex := 0
 			start := time.Now()

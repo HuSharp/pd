@@ -863,7 +863,7 @@ func (c *RaftCluster) processRegionHeartbeat(region *core.RegionInfo) error {
 	// Save to cache if meta or leader is updated, or contains any down/pending peer.
 	// Mark isNew if the region in cache does not have leader.
 	isNew, saveKV, saveCache, needSync := regionGuide(region, origin)
-	log.Info("heartbeat", zap.Uint64("region-id", region.GetID()), zap.Bool("heartbeat", region.IsFromHeartbeat()), zap.Bool("is-prepared", c.IsPrepared()),
+	log.Info("heartbeat", zap.Uint64("region-id", region.GetID()), zap.Uint64("region-id", origin.GetID()), zap.Bool("heartbeat", region.IsFromHeartbeat()), zap.Bool("is-prepared", c.IsPrepared()),
 		zap.Bool("save-kv", saveKV), zap.Bool("save-cache", saveCache), zap.Bool("is-new", isNew), zap.Bool("need-sync", needSync),
 		zap.Stringer("meta", core.RegionToHexMeta(region.GetMeta())))
 	if !saveKV && !saveCache && !isNew {
