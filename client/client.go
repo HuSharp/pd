@@ -23,6 +23,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tikv/pd/client/retry"
+
 	"github.com/opentracing/opentracing-go"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/failpoint"
@@ -765,6 +767,7 @@ func (c *client) handleDispatcher(
 
 	// Loop through each batch of TSO requests and send them for processing.
 	streamLoopTimer := time.NewTimer(c.option.timeout)
+	bo := retry.InitialBackOffer(100*time.Millisecond, updateMemberTimeout)
 tsoBatchLoop:
 	for {
 		select {
@@ -791,10 +794,12 @@ tsoBatchLoop:
 		// Choose a stream to send the TSO gRPC request.
 	streamChoosingLoop:
 		for {
+			log.Info("start stream choosing loop")
 			connectionCtx := c.chooseStream(&connectionCtxs)
 			if connectionCtx != nil {
 				streamAddr, stream, streamCtx, cancel = connectionCtx.streamAddr, connectionCtx.stream, connectionCtx.ctx, connectionCtx.cancel
 			}
+			log.Info("end stream choosing loop", zap.String("stream-addr", streamAddr))
 			// Check stream and retry if necessary.
 			if stream == nil {
 				log.Info("[pd] tso stream is not ready", zap.String("dc", dc))
@@ -823,9 +828,11 @@ tsoBatchLoop:
 				stream = nil
 				continue
 			default:
+				log.Info("break stream choosing loop")
 				break streamChoosingLoop
 			}
 		}
+		log.Info("start processTSORequests")
 		done := make(chan struct{})
 		dl := deadline{
 			timer:  time.After(c.option.timeout),
@@ -842,6 +849,7 @@ tsoBatchLoop:
 		case <-dispatcherCtx.Done():
 			return
 		case tsDeadlineCh.(chan deadline) <- dl:
+			log.Info("dl is sent", zap.String("dc-location", dc), zap.Duration("timeout", c.option.timeout))
 		}
 		opts = extractSpanReference(tbc, opts[:0])
 		err = c.processTSORequests(stream, dc, tbc, opts)
@@ -861,9 +869,10 @@ tsoBatchLoop:
 			stream = nil
 			// Because ScheduleCheckLeader is asynchronous, if the leader changes, we better call `updateMember` ASAP.
 			if IsLeaderChange(err) {
-				if err := c.updateMember(); err != nil {
+				if err := retry.WithBackoff(dispatcherCtx, c.updateMember, &bo); err != nil {
 					select {
 					case <-dispatcherCtx.Done():
+						log.Info("[pd] stop updating member due to context canceled", zap.String("dc-location", dc))
 						return
 					default:
 					}

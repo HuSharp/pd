@@ -23,6 +23,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tikv/pd/client/retry"
+
 	"github.com/pingcap/errors"
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/kvproto/pkg/pdpb"
@@ -130,20 +132,35 @@ func (c *baseClient) memberLoop() {
 	ctx, cancel := context.WithCancel(c.ctx)
 	defer cancel()
 
+	ticker := time.NewTicker(memberUpdateInterval)
+	defer ticker.Stop()
+
+	bo := retry.InitialBackOffer(100*time.Millisecond, updateMemberTimeout)
+
 	for {
 		select {
 		case <-c.checkLeaderCh:
-		case <-time.After(memberUpdateInterval):
+		case <-ticker.C:
 		case <-ctx.Done():
+			log.Info("[pd.reconnectLoop] exit reconnectLoop")
 			return
 		}
-		if _, _err_ := failpoint.Eval(_curpkg_("skipUpdateMember")); _err_ == nil {
-			continue
-		}
-		if err := c.updateMember(); err != nil {
-			log.Error("[pd] failed updateMember", errs.ZapError(err))
+		failpoint.Inject("skipUpdateMember", func() {
+			failpoint.Continue()
+		})
+
+		if err := retry.WithBackoff(ctx, c.updateMember, &bo); err != nil {
+			log.Info("[pd] failed update member with retry", errs.ZapError(err))
 		}
 	}
+}
+
+// Only used for test.
+var testBackOffExecuteFlag = false
+
+// TestBackOffExecute Only used for test.
+func (c *baseClient) TestBackOffExecute() bool {
+	return testBackOffExecuteFlag
 }
 
 // ScheduleCheckLeader is used to check leader.
@@ -273,6 +290,7 @@ func (c *baseClient) initClusterID() error {
 }
 
 func (c *baseClient) updateMember() error {
+	log.Info("[pd] update member")
 	for i, u := range c.GetURLs() {
 		if _, _err_ := failpoint.Eval(_curpkg_("skipFirstUpdateMember")); _err_ == nil {
 			if i == 0 {
