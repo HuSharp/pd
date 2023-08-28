@@ -18,14 +18,17 @@ import (
 	"context"
 	"time"
 
+	"github.com/pingcap/log"
+
 	"github.com/pingcap/failpoint"
 	"go.uber.org/multierr"
 )
 
 // BackOffer is a backoff policy for retrying operations.
 type BackOffer struct {
-	maxBackoff  time.Duration
-	nextBackoff time.Duration
+	maxBackoff     time.Duration
+	nextBackoff    time.Duration
+	initialBackoff time.Duration
 }
 
 // WithBackoff is a helper function to add backoff.
@@ -40,6 +43,7 @@ func WithBackoff(
 		allErrors = multierr.Append(allErrors, err)
 		select {
 		case <-ctx.Done():
+			log.Info("context done")
 			return allErrors
 		case <-time.After(bo.NextBackoff()):
 			failpoint.Inject("backOffExecute", func() {
@@ -56,8 +60,9 @@ func WithBackoff(
 // InitialBackOffer make the initial state for retrying.
 func InitialBackOffer(initialBackoff, maxBackoff time.Duration) BackOffer {
 	return BackOffer{
-		maxBackoff:  maxBackoff,
-		nextBackoff: initialBackoff,
+		maxBackoff:     maxBackoff,
+		initialBackoff: initialBackoff,
+		nextBackoff:    initialBackoff,
 	}
 }
 
@@ -78,7 +83,7 @@ func (rs *BackOffer) ExponentialBackoff() time.Duration {
 
 // ResetBackoff reset the backoff to initial state.
 func (rs *BackOffer) ResetBackoff() {
-	rs.nextBackoff = 0
+	rs.nextBackoff = rs.initialBackoff
 }
 
 // Only used for test.
