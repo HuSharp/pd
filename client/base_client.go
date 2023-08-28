@@ -134,6 +134,7 @@ func (c *baseClient) memberLoop() {
 	ticker := time.NewTicker(memberUpdateInterval)
 	defer ticker.Stop()
 
+	log.Info("[pd] start update member loop")
 	bo := retry.InitialBackOffer(100*time.Millisecond, updateMemberTimeout)
 	for {
 		select {
@@ -147,6 +148,7 @@ func (c *baseClient) memberLoop() {
 			failpoint.Continue()
 		})
 
+		log.Info("start update member")
 		if err := retry.WithBackoff(ctx, c.updateMember, &bo); err != nil {
 			log.Info("[pd] failed update member with retry", errs.ZapError(err))
 		}
