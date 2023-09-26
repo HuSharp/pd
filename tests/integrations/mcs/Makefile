@@ -34,8 +34,9 @@ test: failpoint-enable
 	CGO_ENABLED=1 go test ./... -v -tags deadlock -race -cover || { $(MAKE) failpoint-disable && exit 1; }
 	$(MAKE) failpoint-disable
 
-ci-test-job:
+ci-test-job:failpoint-enable
 	CGO_ENABLED=1 go test ./... -v -timeout=15m -tags deadlock -race -covermode=atomic -coverprofile=covprofile -coverpkg=$(ROOT_PATH)/... github.com/tikv/pd/tests/integrations/mcs
+	$(MAKE) failpoint-disable
 
 install-tools:
 	cd $(ROOT_PATH) && $(MAKE) install-tools

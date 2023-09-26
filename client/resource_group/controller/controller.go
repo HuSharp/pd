@@ -335,6 +335,7 @@ func (c *ResourceGroupsController) Start(ctx context.Context) {
 							if err = proto.Unmarshal(item.PrevKv.Value, group); err != nil {
 								continue
 							}
+							log.Info("[resource group controller] in watch delete resource group", zap.String("name", group.Name))
 							if _, ok := c.groupsController.LoadAndDelete(group.Name); ok {
 								resourceGroupStatusGauge.DeleteLabelValues(group.Name)
 							}
@@ -435,6 +436,7 @@ func (c *ResourceGroupsController) cleanUpResourceGroup() {
 		if equalRU(latestConsumption, *gc.run.consumption) {
 			if gc.tombstone {
 				c.groupsController.Delete(resourceGroupName)
+				log.Info("[resource group controller] delete resource group cost controller", zap.String("name", resourceGroupName))
 				resourceGroupStatusGauge.DeleteLabelValues(resourceGroupName)
 				return true
 			}

@@ -18,6 +18,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/pingcap/log"
+	"go.uber.org/zap"
 	"io"
 	"math/rand"
 	"net/http"
@@ -191,8 +193,6 @@ func (suite *resourceManagerClientTestSuite) resignAndWaitLeader() {
 }
 
 func (suite *resourceManagerClientTestSuite) TestWatchResourceGroup() {
-	// TODO: fix the unstable part at line 248.
-	suite.T().Skip()
 	re := suite.Require()
 	cli := suite.client
 	group := &rmpb.ResourceGroup{
@@ -228,18 +228,18 @@ func (suite *resourceManagerClientTestSuite) TestWatchResourceGroup() {
 		re.NotNil(meta)
 	}
 	// Mock modify resource groups
-	modifySettings := func(gs *rmpb.ResourceGroup) {
+	modifySettings := func(gs *rmpb.ResourceGroup, fillRate uint64) {
 		gs.RUSettings = &rmpb.GroupRequestUnitSettings{
 			RU: &rmpb.TokenBucket{
 				Settings: &rmpb.TokenLimitSettings{
-					FillRate: 20000,
+					FillRate: fillRate,
 				},
 			},
 		}
 	}
 	for i := 0; i < groupsNum; i++ {
 		group.Name = "test" + strconv.Itoa(i)
-		modifySettings(group)
+		modifySettings(group, 20000)
 		resp, err := cli.ModifyResourceGroup(suite.ctx, group)
 		re.NoError(err)
 		re.Contains(resp, "Success!")
@@ -248,7 +248,9 @@ func (suite *resourceManagerClientTestSuite) TestWatchResourceGroup() {
 		testutil.Eventually(re, func() bool {
 			name := "test" + strconv.Itoa(i)
 			meta = controller.GetActiveResourceGroup(name)
+			log.Info("check group meta is", zap.String("name", name), zap.Any("meta", meta))
 			if meta != nil {
+				log.Info("check group is", zap.String("name", name), zap.Any("meta", meta))
 				return meta.RUSettings.RU.Settings.FillRate == uint64(20000)
 			}
 			return false
@@ -265,13 +267,13 @@ func (suite *resourceManagerClientTestSuite) TestWatchResourceGroup() {
 	meta, err = controller.GetResourceGroup(group.Name)
 	re.NotNil(meta)
 	re.NoError(err)
-	modifySettings(group)
+	modifySettings(group, 30000)
 	resp, err = cli.ModifyResourceGroup(suite.ctx, group)
 	re.NoError(err)
 	re.Contains(resp, "Success!")
 	testutil.Eventually(re, func() bool {
 		meta = controller.GetActiveResourceGroup(group.Name)
-		return meta.RUSettings.RU.Settings.FillRate == uint64(20000)
+		return meta.RUSettings.RU.Settings.FillRate == uint64(30000)
 	}, testutil.WithTickInterval(100*time.Millisecond))
 	re.NoError(failpoint.Disable("github.com/tikv/pd/client/resource_group/controller/watchStreamError"))
 
