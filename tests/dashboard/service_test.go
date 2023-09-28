@@ -25,12 +25,14 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/goleak"
 
+	"github.com/pingcap/log"
 	"github.com/tikv/pd/pkg/dashboard"
 	"github.com/tikv/pd/pkg/utils/testutil"
 	"github.com/tikv/pd/server/config"
 	"github.com/tikv/pd/tests"
 	"github.com/tikv/pd/tests/pdctl"
 	pdctlCmd "github.com/tikv/pd/tools/pd-ctl/pdctl"
+	"go.uber.org/zap"
 )
 
 func TestMain(m *testing.M) {
@@ -69,10 +71,12 @@ func (suite *dashboardTestSuite) TearDownSuite() {
 }
 
 func (suite *dashboardTestSuite) TestDashboardRedirect() {
+	println("TestDashboardRedirect")
 	suite.testDashboard(false)
 }
 
 func (suite *dashboardTestSuite) TestDashboardProxy() {
+	println("TestDashboardProxy")
 	suite.testDashboard(true)
 }
 
@@ -86,7 +90,7 @@ func (suite *dashboardTestSuite) checkRespCode(url string, code int) {
 }
 
 func waitForConfigSync() {
-	time.Sleep(time.Second)
+	time.Sleep(3 * time.Second)
 }
 
 func (suite *dashboardTestSuite) checkServiceIsStarted(internalProxy bool, servers map[string]*tests.TestServer, leader *tests.TestServer) string {
@@ -96,6 +100,8 @@ func (suite *dashboardTestSuite) checkServiceIsStarted(internalProxy bool, serve
 	for _, srv := range servers {
 		suite.Equal(dashboardAddress, srv.GetPersistOptions().GetDashboardAddress())
 		addr := srv.GetAddr()
+		log.Info("checkServiceIsStarted", zap.String("addr", addr), zap.String("dashboardAddress", dashboardAddress),
+			zap.String("now", srv.GetPersistOptions().GetDashboardAddress()), zap.Bool("internalProxy", internalProxy))
 		if addr == dashboardAddress || internalProxy {
 			suite.checkRespCode(fmt.Sprintf("%s/dashboard/", addr), http.StatusOK)
 			suite.checkRespCode(fmt.Sprintf("%s/dashboard/api/keyvisual/heatmaps", addr), http.StatusUnauthorized)
@@ -138,7 +144,9 @@ func (suite *dashboardTestSuite) testDashboard(internalProxy bool) {
 	leaderAddr := leader.GetAddr()
 
 	// auto select node
+	log.Info("auto select node")
 	dashboardAddress1 := suite.checkServiceIsStarted(internalProxy, servers, leader)
+	log.Info("auto select node finished")
 
 	// pd-ctl set another addr
 	var dashboardAddress2 string
@@ -151,7 +159,10 @@ func (suite *dashboardTestSuite) testDashboard(internalProxy bool) {
 	args := []string{"-u", leaderAddr, "config", "set", "dashboard-address", dashboardAddress2}
 	_, err = pdctl.ExecuteCommand(cmd, args...)
 	suite.NoError(err)
+
+	log.Info("ctl check node")
 	suite.checkServiceIsStarted(internalProxy, servers, leader)
+	log.Info("ctl check node finished")
 	suite.Equal(dashboardAddress2, leader.GetServer().GetPersistOptions().GetDashboardAddress())
 
 	// pd-ctl set stop
