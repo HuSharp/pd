@@ -206,7 +206,7 @@ require (
 
 replace google.golang.org/grpc v1.59.0 => google.golang.org/grpc v1.26.0
 
-replace go.etcd.io/etcd v0.5.0-alpha.5.0.20220915004622-85b640cee793 => github.com/HuSharp/etcd v0.0.0-20240104032948-8294414b0a31
+replace go.etcd.io/etcd v0.5.0-alpha.5.0.20220915004622-85b640cee793 => github.com/HuSharp/etcd a08a404dd3d250448fa3a259d50c1355129d7207
 
 // When you modify PD cooperatively with kvproto, this will be useful to submit the PR to PD and the PR to
 // kvproto at the same time. You can run `go mod tidy` to make it replaced with go-mod style specification.
