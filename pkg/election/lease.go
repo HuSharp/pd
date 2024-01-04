@@ -165,6 +165,7 @@ func (l *lease) keepAliveWorker(ctx context.Context, interval time.Duration) <-c
 				if l.ID.Load() != nil {
 					leaseID = l.ID.Load().(clientv3.LeaseID)
 				}
+				log.Info("[check lease] pd lease keep alive", zap.Int64("lease-id", int64(leaseID)), zap.String("purpose", l.Purpose))
 				res, err := l.lease.KeepAliveOnce(ctx1, leaseID)
 				if err != nil {
 					log.Warn("lease keep alive failed", zap.String("purpose", l.Purpose), zap.Time("start", start), errs.ZapError(err))
