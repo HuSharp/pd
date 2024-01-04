@@ -107,3 +107,20 @@ func TestLeaseKeepAlive(t *testing.T) {
 	<-ch
 	re.NoError(lease.Close())
 }
+
+func TestContextTimeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	now := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			t.Log("context timeout")
+			return
+		case <-time.After(now.Add(2 * time.Second).Sub(time.Now())):
+			t.Log("time after")
+			return
+		}
+	}
+}
