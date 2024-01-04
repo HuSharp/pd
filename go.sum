@@ -6,6 +6,7 @@ github.com/BurntSushi/toml v0.3.1 h1:WXkYYl6Yr3qBf1K79EBnL4mak0OimBfB0XUf9Vl28OQ
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/HuSharp/etcd v0.0.0-20240104032948-8294414b0a31 h1:e+bWi3vBCrSDtb0t8++CqkqhPakSNpacD0w9Fyoi0rU=
 github.com/HuSharp/etcd v0.0.0-20240104032948-8294414b0a31/go.mod h1:eBhtbxXP1qpW0F6+WxoJ64DM1Mrfx46PHtVxEdkLe0I=
+github.com/HuSharp/etcd v0.0.0-20240104053957-a08a404dd3d2/go.mod h1:eBhtbxXP1qpW0F6+WxoJ64DM1Mrfx46PHtVxEdkLe0I=
 github.com/KyleBanks/depth v1.2.1 h1:5h8fQADFrWtarTdtDudMmGsC7GPbOAu6RVB3ffsVFHc=
 github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6XgeJcm8brE=
 github.com/Masterminds/semver v1.5.0 h1:H65muMkzWKEuNDnfl9d70GUjFniHKHRbFPGBuZ3QEww=
