@@ -349,7 +349,7 @@ func (s *Server) startEtcd(ctx context.Context) error {
 	}
 
 	// Start the etcd and HTTP clients, then init the member.
-	err = s.startClient()
+	err = s.startClient(etcd)
 	if err != nil {
 		return err
 	}
@@ -372,7 +372,7 @@ func (s *Server) initGRPCServiceLabels() {
 	}
 }
 
-func (s *Server) startClient() error {
+func (s *Server) startClient(etcd *embed.Etcd) error {
 	tlsConfig, err := s.cfg.Security.ToTLSConfig()
 	if err != nil {
 		return err
@@ -383,12 +383,12 @@ func (s *Server) startClient() error {
 	}
 	/* Starting two different etcd clients here is to avoid the throttling. */
 	// This etcd client will be used to access the etcd cluster to read and write all kinds of meta data.
-	s.client, err = etcdutil.CreateEtcdClient(tlsConfig, etcdCfg.ACUrls)
+	s.client, err = etcdutil.CreateEtcdClient(etcd, tlsConfig, etcdCfg.ACUrls)
 	if err != nil {
 		return errs.ErrNewEtcdClient.Wrap(err).GenWithStackByCause()
 	}
 	// This etcd client will only be used to read and write the election-related data, such as leader key.
-	s.electionClient, err = etcdutil.CreateEtcdClient(tlsConfig, etcdCfg.ACUrls)
+	s.electionClient, err = etcdutil.CreateEtcdClient(etcd, tlsConfig, etcdCfg.ACUrls)
 	if err != nil {
 		return errs.ErrNewEtcdClient.Wrap(err).GenWithStackByCause()
 	}
@@ -1802,6 +1802,8 @@ func (s *Server) campaignLeader() {
 
 			etcdLeader := s.member.GetEtcdLeader()
 			if etcdLeader != s.member.ID() {
+				etcdutil.UsingEtcdLeader(etcdLeader, s.client)
+				etcdutil.UsingEtcdLeader(etcdLeader, s.electionClient)
 				log.Info("etcd leader changed, resigns pd leadership", zap.String("old-pd-leader-name", s.Name()))
 				return
 			}

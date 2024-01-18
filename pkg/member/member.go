@@ -268,6 +268,7 @@ func (m *EmbeddedEtcdMember) CheckLeader() (ElectionLeader, bool) {
 // WatchLeader is used to watch the changes of the leader.
 func (m *EmbeddedEtcdMember) WatchLeader(ctx context.Context, leader *pdpb.Member, revision int64) {
 	m.setLeader(leader)
+	m.client.SetEndpoints(leader.GetClientUrls()...)
 	m.leadership.Watch(ctx, revision)
 	m.unsetLeader()
 }
@@ -315,6 +316,7 @@ func (m *EmbeddedEtcdMember) MoveEtcdLeader(ctx context.Context, old, new uint64
 	if err != nil {
 		return errs.ErrEtcdMoveLeader.Wrap(err).GenWithStackByCause()
 	}
+	etcdutil.UsingEtcdLeader(m.GetEtcdLeader(), m.client)
 	return nil
 }
 

@@ -35,6 +35,7 @@ import (
 	"github.com/tikv/pd/pkg/utils/syncutil"
 	"github.com/tikv/pd/pkg/utils/typeutil"
 	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/embed"
 	"go.etcd.io/etcd/etcdserver"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/mvcc/mvccpb"
@@ -254,7 +255,7 @@ func newClient(tlsConfig *tls.Config, endpoints ...string) (*clientv3.Client, er
 }
 
 // CreateEtcdClient creates etcd v3 client with detecting endpoints.
-func CreateEtcdClient(tlsConfig *tls.Config, acURLs []url.URL) (*clientv3.Client, error) {
+func CreateEtcdClient(etcd *embed.Etcd, tlsConfig *tls.Config, acURLs []url.URL) (*clientv3.Client, error) {
 	urls := make([]string, 0, len(acURLs))
 	for _, u := range acURLs {
 		urls = append(urls, u.String())
@@ -262,6 +263,27 @@ func CreateEtcdClient(tlsConfig *tls.Config, acURLs []url.URL) (*clientv3.Client
 	client, err := newClient(tlsConfig, urls...)
 	if err != nil {
 		return nil, err
+	}
+
+	if etcd != nil {
+		log.Info("using etcd leader", zap.String("leader-id", fmt.Sprintf("%x", etcd.Server.Lead())))
+		// using etcd leader client
+		UsingEtcdLeader(etcd.Server.Lead(), client)
+
+		go func(ctx context.Context, e *embed.Etcd) {
+			ticker := time.NewTicker(defaultDialKeepAliveTime)
+			for {
+				select {
+				case <-ticker.C:
+					UsingEtcdLeader(e.Server.Lead(), client)
+				case <-ctx.Done():
+					log.Info("exit etcd leader check")
+					return
+				}
+			}
+		}(client.Ctx(), etcd)
+
+		return client, err
 	}
 
 	tickerInterval := defaultDialKeepAliveTime
@@ -274,6 +296,27 @@ func CreateEtcdClient(tlsConfig *tls.Config, acURLs []url.URL) (*clientv3.Client
 	initHealthyChecker(tickerInterval, tlsConfig, client)
 
 	return client, err
+}
+
+func UsingEtcdLeader(leaderID uint64, client *clientv3.Client) {
+	ctx, cancel := context.WithTimeout(clientv3.WithRequireLeader(client.Ctx()), DefaultRequestTimeout)
+	defer cancel()
+	members, err := client.MemberList(ctx)
+	if err != nil {
+		log.Warn("failed to list members", errs.ZapError(err))
+	}
+
+	for _, ep := range members.Members {
+		if len(ep.GetClientURLs()) == 0 { // This member is not started yet.
+			log.Info("member is not started yet", zap.String("member-id", fmt.Sprintf("%x", ep.GetID())), errs.ZapError(err))
+			continue
+		}
+
+		if leaderID == ep.ID {
+			client.SetEndpoints(ep.GetClientURLs()...)
+			break
+		}
+	}
 }
 
 // healthyClient will wrap a etcd client and record its last health time.

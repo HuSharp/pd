@@ -167,6 +167,7 @@ func (ls *Leadership) Campaign(leaseTimeout int64, leaderData string, cmps ...cl
 		}
 	})
 
+	startGrantedTime := time.Now()
 	if err := newLease.Grant(leaseTimeout); err != nil {
 		return err
 	}
@@ -182,6 +183,12 @@ func (ls *Leadership) Campaign(leaseTimeout int64, leaderData string, cmps ...cl
 	if err != nil {
 		newLease.Close()
 		return errs.ErrEtcdTxnInternal.Wrap(err).GenWithStackByCause()
+	}
+	if time.Since(startGrantedTime) > time.Duration(leaseTimeout)*time.Second {
+		log.Warn("write leader key spends too much time", zap.Duration("start-granted-time", time.Since(startGrantedTime)), zap.Int64("lease-timeout", leaseTimeout))
+		if err := newLease.Grant(leaseTimeout); err != nil {
+			return err
+		}
 	}
 	if !resp.Succeeded {
 		newLease.Close()
