@@ -19,6 +19,7 @@ import (
 	"context"
 	errorspkg "errors"
 	"fmt"
+	"github.com/tikv/pd/server/trend"
 	"math/rand"
 	"net/http"
 	"os"
@@ -113,6 +114,8 @@ const (
 
 	lostPDLeaderMaxTimeoutSecs   = 10
 	lostPDLeaderReElectionFactor = 10
+
+	TrendHealthyRatio = 0.58
 )
 
 // EtcdStartTimeout the timeout of the startup etcd.
@@ -234,6 +237,10 @@ type Server struct {
 	servicePrimaryMap        sync.Map /* Store as map[string]string */
 	tsoPrimaryWatcher        *etcdutil.LoopWatcher
 	schedulingPrimaryWatcher *etcdutil.LoopWatcher
+
+	etcdHealthyChecker []*etcdutil.HealthyChecker
+
+	etcdLeaderHealthy *trend.Trend
 }
 
 // HandlerBuilder builds a server HTTP handler.
@@ -315,6 +322,7 @@ func CreateServer(ctx context.Context, cfg *config.Config, services []string, le
 	s.etcdCfg = etcdCfg
 	s.lg = cfg.Logger
 	s.logProps = cfg.LogProps
+	s.etcdLeaderHealthy = trend.NewTrend(s.Name(), 20*time.Second)
 	return s, nil
 }
 
@@ -349,7 +357,7 @@ func (s *Server) startEtcd(ctx context.Context) error {
 	}
 
 	// Start the etcd and HTTP clients, then init the member.
-	err = s.startClient()
+	err = s.startClient(etcd)
 	if err != nil {
 		return err
 	}
@@ -372,7 +380,7 @@ func (s *Server) initGRPCServiceLabels() {
 	}
 }
 
-func (s *Server) startClient() error {
+func (s *Server) startClient(etcd *embed.Etcd) error {
 	tlsConfig, err := s.cfg.Security.ToTLSConfig()
 	if err != nil {
 		return err
@@ -381,17 +389,20 @@ func (s *Server) startClient() error {
 	if err != nil {
 		return err
 	}
+	var checker *etcdutil.HealthyChecker
 	/* Starting two different etcd clients here is to avoid the throttling. */
 	// This etcd client will be used to access the etcd cluster to read and write all kinds of meta data.
-	s.client, err = etcdutil.CreateEtcdClient(tlsConfig, etcdCfg.ACUrls)
+	s.client, checker, err = etcdutil.CreateEtcdClient(etcd, fmt.Sprintf("%s-%s", s.Name(), "client"), tlsConfig, etcdCfg.ACUrls)
 	if err != nil {
 		return errs.ErrNewEtcdClient.Wrap(err).GenWithStackByCause()
 	}
+	s.etcdHealthyChecker = append(s.etcdHealthyChecker, checker)
 	// This etcd client will only be used to read and write the election-related data, such as leader key.
-	s.electionClient, err = etcdutil.CreateEtcdClient(tlsConfig, etcdCfg.ACUrls)
+	s.electionClient, checker, err = etcdutil.CreateEtcdClient(etcd, fmt.Sprintf("%s-%s", s.Name(), "ElectionClient"), tlsConfig, etcdCfg.ACUrls)
 	if err != nil {
 		return errs.ErrNewEtcdClient.Wrap(err).GenWithStackByCause()
 	}
+	s.etcdHealthyChecker = append(s.etcdHealthyChecker, checker)
 	s.httpClient = etcdutil.CreateHTTPClient(tlsConfig)
 	return nil
 }
@@ -1679,6 +1690,19 @@ func (s *Server) leaderLoop() {
 
 func (s *Server) campaignLeader() {
 	log.Info(fmt.Sprintf("start to campaign %s leader", s.mode), zap.String("campaign-leader-name", s.Name()))
+	// check current server trend
+	if s.etcdLeaderHealthy != nil {
+		avg, _ := s.etcdLeaderHealthy.AvgRate()
+		if avg >= TrendHealthyRatio {
+			if err := s.member.ResignEtcdLeader(s.ctx, s.member.Name(), ""); err != nil {
+				log.Error("resign etcd leader failed", errs.ZapError(err))
+				return
+			}
+			log.Warn("pd leader is unhealthy", zap.Float64("healthy-trend", avg))
+			return
+		}
+	}
+
 	if err := s.member.CampaignLeader(s.ctx, s.cfg.LeaderLease); err != nil {
 		if err.Error() == errs.ErrEtcdTxnConflict.Error() {
 			log.Info(fmt.Sprintf("campaign %s leader meets error due to txn conflict, another PD/API server may campaign successfully", s.mode),
@@ -1821,6 +1845,12 @@ func (s *Server) etcdLeaderLoop() {
 	defer cancel()
 	ticker := time.NewTicker(s.cfg.LeaderPriorityCheckInterval.Duration)
 	defer ticker.Stop()
+
+	healthyCheckTicker := time.NewTicker(1 * time.Second)
+	defer healthyCheckTicker.Stop()
+
+	asyncFromEtcd := trend.NewAsyncFromEtcd()
+
 	for {
 		select {
 		case <-ticker.C:
@@ -1830,6 +1860,14 @@ func (s *Server) etcdLeaderLoop() {
 		case <-ctx.Done():
 			log.Info("server is closed, exit etcd leader loop")
 			return
+		case <-healthyCheckTicker.C:
+			// record fsync value
+			if base, val, err := asyncFromEtcd.GetVal(s.cfg.ClientUrls); err == nil {
+				s.etcdLeaderHealthy.Record(base, val, time.Now())
+				s.etcdLeaderHealthy.AvgRate()
+			} else {
+				log.Error("failed to get fsync duration", errs.ZapError(err))
+			}
 		}
 	}
 }
@@ -2137,4 +2175,10 @@ func (s *Server) GetMaxResetTSGap() time.Duration {
 // Notes: it is only used for test.
 func (s *Server) SetClient(client *clientv3.Client) {
 	s.client = client
+}
+
+// GetHealthCheckers returns the healthy checkers.
+// Notes: it is only used for test.
+func (s *Server) GetHealthCheckers() []*etcdutil.HealthyChecker {
+	return s.etcdHealthyChecker
 }
