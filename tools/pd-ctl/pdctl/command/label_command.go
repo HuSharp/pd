@@ -15,6 +15,7 @@
 package command
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -34,9 +35,10 @@ var (
 // NewLabelCommand return a member subcommand of rootCmd
 func NewLabelCommand() *cobra.Command {
 	l := &cobra.Command{
-		Use:   "label [store]",
-		Short: "show the labels",
-		Run:   showLabelsCommandFunc,
+		Use:               "label [store]",
+		Short:             "show the labels",
+		PersistentPreRunE: requirePDClient,
+		Run:               showLabelsCommandFunc,
 	}
 	l.AddCommand(NewLabelListStoresCommand())
 	l.AddCommand(NewCheckLabels())
@@ -96,13 +98,18 @@ func NewCheckLabels() *cobra.Command {
 }
 
 func getReplicationConfig(cmd *cobra.Command, _ []string) (*sc.ReplicationConfig, error) {
-	prefix := configPrefix + "/replicate"
-	body, err := doRequest(cmd, prefix, http.MethodGet, http.Header{})
+	body, err := PDCli.GetReplicateConfig(context.Background())
 	if err != nil {
 		return nil, err
 	}
+	cfg, err := json.Marshal(body)
+	if err != nil {
+		cmd.Printf("Failed to marshal config: %s\n", err)
+		return nil, err
+	}
+
 	var config sc.ReplicationConfig
-	if err := json.Unmarshal([]byte(body), &config); err != nil {
+	if err := json.Unmarshal(cfg, &config); err != nil {
 		return nil, err
 	}
 	return &config, nil
