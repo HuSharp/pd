@@ -15,15 +15,14 @@
 package command
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tikv/pd/pkg/core"
 	"github.com/tikv/pd/pkg/response"
-	sc "github.com/tikv/pd/pkg/schedule/config"
 	"github.com/tikv/pd/pkg/statistics"
 )
 
@@ -87,7 +86,7 @@ func showLabelListStoresCommandFunc(cmd *cobra.Command, args []string) {
 	cmd.Println(r)
 }
 
-// NewCheckLabels returns a isolation label check.
+// NewCheckLabels returns an isolation label check.
 func NewCheckLabels() *cobra.Command {
 	return &cobra.Command{
 		Use:     "isolation [label]",
@@ -95,24 +94,6 @@ func NewCheckLabels() *cobra.Command {
 		Example: "label-count: map[isolation-label:count], region-map: [region-id:isolation-label]",
 		Run:     checkIsolationLabel,
 	}
-}
-
-func getReplicationConfig(cmd *cobra.Command, _ []string) (*sc.ReplicationConfig, error) {
-	body, err := PDCli.GetReplicateConfig(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	cfg, err := json.Marshal(body)
-	if err != nil {
-		cmd.Printf("Failed to marshal config: %s\n", err)
-		return nil, err
-	}
-
-	var config sc.ReplicationConfig
-	if err := json.Unmarshal(cfg, &config); err != nil {
-		return nil, err
-	}
-	return &config, nil
 }
 
 func getStores(cmd *cobra.Command, _ []string) ([]*core.StoreInfo, error) {
@@ -163,12 +144,18 @@ func checkIsolationLabel(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	config, err := getReplicationConfig(cmd, args)
+	config, err := PDCli.GetReplicateConfig(cmd.Context())
 	if err != nil {
 		cmd.Printf("Failed to get labels: %s\n", err)
 		return
 	}
-	locationLabels := config.LocationLabels
+
+	var locationLabels []string
+	if config != nil {
+		if labels, ok := config["location-labels"].(string); ok && len(labels) > 0 {
+			locationLabels = strings.Split(labels, ",")
+		}
+	}
 
 	storesMap := make(map[uint64]*core.StoreInfo, len(storesInfo))
 	for _, store := range storesInfo {
