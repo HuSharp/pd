@@ -761,7 +761,7 @@ func saveRuleBundle(cmd *cobra.Command, args []string) {
 func withForbiddenForwardToMicroServiceHeader(cmd *cobra.Command) []pd.HeaderOption {
 	forbiddenRedirectToMicroService, err := cmd.Flags().GetBool(flagFromAPIServer)
 	if err == nil && forbiddenRedirectToMicroService {
-		return []pd.HeaderOption{pd.WithForbiddenForwardToMicroServiceHeader(true)}
+		return []pd.HeaderOption{pd.WithForbiddenForwardToMicroServiceHeader()}
 	}
 	return nil
 }

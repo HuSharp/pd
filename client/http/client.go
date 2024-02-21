@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/pingcap/errors"
@@ -189,15 +188,11 @@ func (ci *clientInner) doRequest(
 		return -1, errors.Trace(err)
 	}
 	for _, opt := range headerOpts {
-		opt(req.Header)
-	}
-	req.Header.Set(xCallerIDKey, callerID)
-	if req.Header.Get(XForbiddenForwardToMicroServiceHeader) == "true" {
-		if req.Header.Get(XForwardedToMicroServiceHeader) == "true" {
-			log.Warn("the request is forwarded to micro service unexpectedly")
-			return -1, errors.New("the request is forwarded to micro service unexpectedly")
+		if err = opt(req.Header); err != nil {
+			return -1, errors.Trace(err)
 		}
 	}
+	req.Header.Set(xCallerIDKey, callerID)
 
 	start := time.Now()
 	resp, err := ci.cli.Do(req)
@@ -365,19 +360,24 @@ const (
 )
 
 // HeaderOption configures the HTTP header.
-type HeaderOption func(header http.Header)
+type HeaderOption func(header http.Header) error
 
 // WithAllowFollowerHandle sets the header field to allow a PD follower to handle this request.
 func WithAllowFollowerHandle() HeaderOption {
-	return func(header http.Header) {
+	return func(header http.Header) error {
 		header.Set(pdAllowFollowerHandleKey, "true")
+		return nil
 	}
 }
 
 // WithForbiddenForwardToMicroServiceHeader sets the header field to indicate that forwarding the request to a microservice is explicitly disallowed.
-func WithForbiddenForwardToMicroServiceHeader(val bool) HeaderOption {
-	return func(header http.Header) {
-		header.Add(XForbiddenForwardToMicroServiceHeader, strconv.FormatBool(val))
+func WithForbiddenForwardToMicroServiceHeader() HeaderOption {
+	return func(header http.Header) error {
+		if header.Get(XForwardedToMicroServiceHeader) == "true" {
+			return errors.New("the request is forwarded to micro service unexpectedly")
+		}
+		header.Add(XForbiddenForwardToMicroServiceHeader, "true")
+		return nil
 	}
 }
 
