@@ -56,9 +56,9 @@ jobs:
       - name: ${{ matrix.name }}
         env:
           WORKER_ID: ${{ matrix.worker_id }}
-          WORKER_COUNT: 5
+          WORKER_COUNT: 10
         run: |
-          make ci-test-job JOB_INDEX=$WORKER_ID
+          make ci-test-job JOB_INDEX=1
           mv covprofile covprofile_$WORKER_ID
       - name: Upload coverage result ${{ matrix.worker_id }}
         uses: actions/upload-artifact@v2
