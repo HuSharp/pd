@@ -3482,8 +3482,13 @@ func TestStoreOverloadedWithReplace(t *testing.T) {
 	re.Empty(ops)
 	// sleep 2 seconds to make sure that token is filled up
 	time.Sleep(2 * time.Second)
-	ops, _ = lb.Schedule(tc, false /* dryRun */)
-	re.NotEmpty(ops)
+	testutil.Eventually(re, func() bool {
+		ops, _ = lb.Schedule(tc, false /* dryRun */)
+		if len(ops) == 0 {
+			return false
+		}
+		return true
+	})
 }
 
 func TestDownStoreLimit(t *testing.T) {

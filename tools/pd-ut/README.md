@@ -12,10 +12,10 @@ pd-ut is a tool to run unit tests for PD.
 This section describes how to use the pd-ut tool.
 
 ### brief run all tests
+
 ```shell
 make ut 
 ```
-
 
 ### run by pd-ut
 
@@ -63,4 +63,8 @@ pd-ut run --junitfile xxx
 
 // test with race flag
 pd-ut run --race
+
+// test with coverprofile
+pd-ut run --coverprofile xxx
+go tool cover --func=xxx
 ```

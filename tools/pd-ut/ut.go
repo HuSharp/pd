@@ -74,7 +74,11 @@ pd-ut build xxx
 pd-ut run --junitfile xxx
 
 // test with race flag
-pd-ut run --race`
+pd-ut run --race
+
+// test with coverprofile
+pd-ut run --coverprofile xxx
+go tool cover --func=xxx`
 
 	fmt.Println(msg)
 	return true
@@ -84,17 +88,30 @@ const modulePath = "github.com/tikv/pd"
 
 var (
 	// runtime
-	p             int
-	buildParallel int
-	workDir       string
+	p                int
+	buildParallel    int
+	workDir          string
+	coverFileTempDir string
 	// arguments
-	race      bool
-	junitFile string
+	race         bool
+	junitFile    string
+	coverProfile string
 )
 
 func main() {
 	race = handleFlag("--race")
 	junitFile = stripFlag("--junitfile")
+	coverProfile = stripFlag("--coverprofile")
+
+	if coverProfile != "" {
+		var err error
+		coverFileTempDir, err = os.MkdirTemp(os.TempDir(), "cov")
+		if err != nil {
+			fmt.Println("create temp dir fail", coverFileTempDir)
+			os.Exit(1)
+		}
+		defer os.RemoveAll(coverFileTempDir)
+	}
 
 	// Get the correct count of CPU if it's in docker.
 	p = runtime.GOMAXPROCS(0)
@@ -326,6 +343,10 @@ func cmdRun(args ...string) bool {
 		}
 	}
 
+	if coverProfile != "" {
+		collectCoverProfileFile()
+	}
+
 	for _, work := range works {
 		if work.Fail {
 			return false
@@ -336,7 +357,7 @@ func cmdRun(args ...string) bool {
 
 // stripFlag strip the '--flag xxx' from the command line os.Args
 // Example of the os.Args changes
-// Before: ut run pkg TestXXX --junitfile yyy
+// Before: ut run pkg TestXXX --coverprofile xxx --junitfile yyy
 // After: ut run pkg TestXXX
 // The value of the flag is returned.
 func stripFlag(flag string) string {
@@ -565,7 +586,16 @@ func failureCases(input []JUnitTestCase) int {
 func (*numa) testCommand(pkg string, fn string) *exec.Cmd {
 	args := make([]string, 0, 10)
 	exe := "./" + testFileName(pkg)
-	args = append(args, "-test.cpu", "1")
+	if coverProfile != "" {
+		fileName := strings.ReplaceAll(pkg, "/", "_") + "." + fn
+		tmpFile := path.Join(coverFileTempDir, fileName)
+		args = append(args, "-test.coverprofile", tmpFile)
+	}
+	if strings.Contains(fn, "Suite") {
+		args = append(args, "-test.cpu", fmt.Sprint(p/2))
+	} else {
+		args = append(args, "-test.cpu", "1")
+	}
 	if !race {
 		args = append(args, []string{"-test.timeout", "2m"}...)
 	} else {
@@ -580,7 +610,7 @@ func (*numa) testCommand(pkg string, fn string) *exec.Cmd {
 }
 
 func skipDIR(pkg string) bool {
-	skipDir := []string{"tests", "bin", "cmd", "tools"}
+	skipDir := []string{"tests/integrations", "bin", "cmd"}
 	for _, ignore := range skipDir {
 		if strings.HasPrefix(pkg, ignore) {
 			return true
@@ -589,8 +619,28 @@ func skipDIR(pkg string) bool {
 	return false
 }
 
+func generateBuildCache() error {
+	// cd cmd/pd-server && go test -tags=tso_function_test,deadlock -exec-=true -vet=off -toolexec=go-compile-without-link
+	cmd := exec.Command("go", "test", "-exec=true", "-vet", "off", "--tags=tso_function_test,deadlock")
+	goCompileWithoutLink := fmt.Sprintf("-toolexec=%s/tools/pd-ut/go-compile-without-link.sh", workDir)
+	cmd.Args = append(cmd.Args, goCompileWithoutLink)
+	cmd.Dir = fmt.Sprintf("%s/cmd/pd-server", workDir)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return withTrace(err)
+	}
+	return nil
+}
+
 // buildTestBinaryMulti is much faster than build the test packages one by one.
 func buildTestBinaryMulti(pkgs []string) error {
+	// staged build, generate the build cache for all the tests first, then generate the test binary.
+	// This way is faster than generating test binaries directly, because the cache can be used.
+	if err := generateBuildCache(); err != nil {
+		return withTrace(err)
+	}
+
 	// go test --exec=xprog --tags=tso_function_test,deadlock -vet=off --count=0 $(pkgs)
 	xprogPath := path.Join(workDir, "bin/xprog")
 	packages := make([]string, 0, len(pkgs))
@@ -600,6 +650,9 @@ func buildTestBinaryMulti(pkgs []string) error {
 
 	p := strconv.Itoa(buildParallel)
 	cmd := exec.Command("go", "test", "-p", p, "--exec", xprogPath, "-vet", "off", "--tags=tso_function_test,deadlock")
+	if coverProfile != "" {
+		cmd.Args = append(cmd.Args, "-cover", "-coverpkg=./...")
+	}
 	cmd.Args = append(cmd.Args, packages...)
 	cmd.Dir = workDir
 	cmd.Stdout = os.Stdout
@@ -613,6 +666,9 @@ func buildTestBinaryMulti(pkgs []string) error {
 func buildTestBinary(pkg string) error {
 	//nolint:gosec
 	cmd := exec.Command("go", "test", "-c", "-vet", "off", "--tags=tso_function_test,deadlock", "-o", testFileName(pkg), "-v")
+	if coverProfile != "" {
+		cmd.Args = append(cmd.Args, "-cover", "-coverpkg=./...")
+	}
 	if race {
 		cmd.Args = append(cmd.Args, "-race")
 	}
