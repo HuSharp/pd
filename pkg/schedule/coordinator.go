@@ -249,11 +249,11 @@ func (c *Coordinator) checkRegions(ctx *breakdown.MetaProcessContext, startKey [
 	start := time.Now()
 
 	//c.cluster.GetCheckerConfig().GetWorkerCnt()
-	cnt := 128
+	cnt := 8
 	// divide regions length by cnt
 	var wg sync.WaitGroup
-	wg.Add(len(regions))
 	for i := 0; i < len(regions); i += cnt {
+		wg.Add(cnt)
 		for j := i; j < i+cnt && j < len(regions); j += 1 {
 			curRegion := regions[j]
 			// Use the pool
@@ -265,6 +265,7 @@ func (c *Coordinator) checkRegions(ctx *breakdown.MetaProcessContext, startKey [
 			coordinatorPool.Put(item)
 			key = curRegion.GetEndKey()
 		}
+		wg.Wait()
 	}
 
 	wg.Wait()
