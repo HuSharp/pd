@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/tikv/pd/pkg/core/breakdown"
 	"io"
 	"math"
 	"net/http"
@@ -1002,8 +1003,8 @@ var regionGuide = core.GenerateRegionGuideFunc(true)
 var syncRunner = ratelimit.NewSyncRunner()
 
 // processRegionHeartbeat updates the region information.
-func (c *RaftCluster) processRegionHeartbeat(ctx *core.MetaProcessContext, region *core.RegionInfo) error {
-	tracer := ctx.Tracer
+func (c *RaftCluster) processRegionHeartbeat(ctx *breakdown.MetaProcessContext, region *core.RegionInfo) error {
+	tracer := ctx.Tracer.(breakdown.RegionHeartbeatProcessTracer)
 	origin, _, err := c.core.PreCheckPutRegion(region)
 	tracer.OnPreCheckFinished()
 	if err != nil {

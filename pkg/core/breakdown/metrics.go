@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package breakdown
 
 import (
 	"time"
@@ -56,11 +56,11 @@ var (
 			Help:      "Bucketed histogram of processing count of waiting for acquiring regions lock.",
 		}, []string{"name"})
 
-	// lock statistics
-	waitRegionsLockDurationSum    = AcquireRegionsLockWaitDurationSum.WithLabelValues("WaitRegionsLock")
-	waitRegionsLockCount          = AcquireRegionsLockWaitCount.WithLabelValues("WaitRegionsLock")
-	waitSubRegionsLockDurationSum = AcquireRegionsLockWaitDurationSum.WithLabelValues("WaitSubRegionsLock")
-	waitSubRegionsLockCount       = AcquireRegionsLockWaitCount.WithLabelValues("WaitSubRegionsLock")
+	// WaitRegionsLockDurationSum lock statistics
+	WaitRegionsLockDurationSum    = AcquireRegionsLockWaitDurationSum.WithLabelValues("WaitRegionsLock")
+	WaitRegionsLockCount          = AcquireRegionsLockWaitCount.WithLabelValues("WaitRegionsLock")
+	WaitSubRegionsLockDurationSum = AcquireRegionsLockWaitDurationSum.WithLabelValues("WaitSubRegionsLock")
+	WaitSubRegionsLockCount       = AcquireRegionsLockWaitCount.WithLabelValues("WaitSubRegionsLock")
 
 	// heartbeat breakdown statistics
 	preCheckDurationSum       = HeartbeatBreakdownHandleDurationSum.WithLabelValues("PreCheck")
@@ -81,6 +81,38 @@ var (
 	regionCollectCount        = HeartbeatBreakdownHandleCount.WithLabelValues("CollectRegionStats")
 	otherDurationSum          = HeartbeatBreakdownHandleDurationSum.WithLabelValues("Other")
 	otherCount                = HeartbeatBreakdownHandleCount.WithLabelValues("Other")
+
+	// CheckerBreakdownHandleDurationSum is the summary of the processing time of handle the checker.
+	CheckerBreakdownHandleDurationSum = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "pd",
+			Subsystem: "core",
+			Name:      "checker_breakdown_handle_duration_seconds_sum",
+			Help:      "Bucketed histogram of processing time (s) of handle the heartbeat stage.",
+		}, []string{"name"})
+
+	// CheckerBreakdownHandleCount is the summary of the processing count of handle the heartbeat stage.
+	CheckerBreakdownHandleCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "pd",
+			Subsystem: "core",
+			Name:      "checker_heartbeat_breakdown_handle_duration_seconds_count",
+			Help:      "Bucketed histogram of processing count of handle the heartbeat stage.",
+		}, []string{"name"})
+
+	// checker breakdown statistics
+	jointStateCheckerDurationSum = CheckerBreakdownHandleDurationSum.WithLabelValues("JointStateChecker")
+	jointStateCheckerCount       = CheckerBreakdownHandleCount.WithLabelValues("JointStateChecker")
+	splitStateCheckerDurationSum = CheckerBreakdownHandleDurationSum.WithLabelValues("SplitStateChecker")
+	splitStateCheckerCount       = CheckerBreakdownHandleCount.WithLabelValues("SplitStateChecker")
+	ruleStateCheckerDurationSum  = CheckerBreakdownHandleDurationSum.WithLabelValues("RuleChecker")
+	ruleStateCheckerCount        = CheckerBreakdownHandleCount.WithLabelValues("RuleChecker")
+	mergeStateCheckerDurationSum = CheckerBreakdownHandleDurationSum.WithLabelValues("MergeStateChecker")
+	mergeStateCheckerCount       = CheckerBreakdownHandleCount.WithLabelValues("MergeStateChecker")
+	replicaStateDurationSum      = CheckerBreakdownHandleDurationSum.WithLabelValues("ReplicaChecker")
+	replicaStateCount            = CheckerBreakdownHandleCount.WithLabelValues("ReplicaChecker")
+	checkOtherDurationSum        = CheckerBreakdownHandleDurationSum.WithLabelValues("Other")
+	checkOtherCount              = CheckerBreakdownHandleCount.WithLabelValues("Other")
 )
 
 func init() {
@@ -88,6 +120,8 @@ func init() {
 	prometheus.MustRegister(HeartbeatBreakdownHandleCount)
 	prometheus.MustRegister(AcquireRegionsLockWaitDurationSum)
 	prometheus.MustRegister(AcquireRegionsLockWaitCount)
+	prometheus.MustRegister(CheckerBreakdownHandleDurationSum)
+	prometheus.MustRegister(CheckerBreakdownHandleCount)
 }
 
 type saveCacheStats struct {
@@ -99,9 +133,112 @@ type saveCacheStats struct {
 	updateSubTreeDuration  time.Duration
 }
 
+type ProcessTracer interface {
+	Begin()
+	OnAllStageFinished()
+	LogFields() []zap.Field
+}
+type CheckerProcessTracer interface {
+	ProcessTracer
+	OnJointCheckerFinished()
+	OnSplitCheckerFinished()
+	OnRuleCheckerFinished()
+	OnMergeCheckerFinished()
+	OnReplicaCheckerFinished()
+}
+
+type checkerProcessTracer struct {
+	startTime            time.Time
+	lastCheckTime        time.Time
+	jointStateDuration   time.Duration
+	splitStateDuration   time.Duration
+	ruleStateDuration    time.Duration
+	mergeStateDuration   time.Duration
+	OtherDuration        time.Duration
+	replicaStateDuration time.Duration
+}
+
+func (c *checkerProcessTracer) Begin() {
+	now := time.Now()
+	c.startTime = now
+	c.lastCheckTime = now
+}
+
+func (c *checkerProcessTracer) OnAllStageFinished() {
+	now := time.Now()
+	c.OtherDuration = now.Sub(c.lastCheckTime)
+	checkOtherDurationSum.Add(c.OtherDuration.Seconds())
+	checkOtherCount.Inc()
+}
+
+func (c *checkerProcessTracer) LogFields() []zap.Field {
+	return nil
+}
+
+func (c *checkerProcessTracer) OnJointCheckerFinished() {
+	now := time.Now()
+	c.jointStateDuration = now.Sub(c.lastCheckTime)
+	c.lastCheckTime = now
+	jointStateCheckerDurationSum.Add(c.jointStateDuration.Seconds())
+	jointStateCheckerCount.Inc()
+}
+
+func (c *checkerProcessTracer) OnSplitCheckerFinished() {
+	now := time.Now()
+	c.splitStateDuration = now.Sub(c.lastCheckTime)
+	c.lastCheckTime = now
+	splitStateCheckerDurationSum.Add(c.splitStateDuration.Seconds())
+	splitStateCheckerCount.Inc()
+}
+
+func (c *checkerProcessTracer) OnRuleCheckerFinished() {
+	now := time.Now()
+	c.ruleStateDuration = now.Sub(c.lastCheckTime)
+	c.lastCheckTime = now
+	ruleStateCheckerDurationSum.Add(c.ruleStateDuration.Seconds())
+	ruleStateCheckerCount.Inc()
+}
+
+func (c *checkerProcessTracer) OnMergeCheckerFinished() {
+	now := time.Now()
+	c.mergeStateDuration = now.Sub(c.lastCheckTime)
+	c.lastCheckTime = now
+	mergeStateCheckerDurationSum.Add(c.mergeStateDuration.Seconds())
+	mergeStateCheckerCount.Inc()
+}
+func (c *checkerProcessTracer) OnReplicaCheckerFinished() {
+	now := time.Now()
+	c.replicaStateDuration = now.Sub(c.lastCheckTime)
+	c.lastCheckTime = now
+	replicaStateDurationSum.Add(c.replicaStateDuration.Seconds())
+	replicaStateCount.Inc()
+}
+
+func NewCheckerProcessTracer() CheckerProcessTracer {
+	return &checkerProcessTracer{}
+}
+
+type noopCheckerProcessTracer struct{}
+
+// NewNoopCheckerProcessTracer returns a noop heartbeat process tracer.
+func NewNoopCheckerProcessTracer() CheckerProcessTracer {
+	return &noopCheckerProcessTracer{}
+}
+
+func (*noopCheckerProcessTracer) Begin()                    {}
+func (*noopCheckerProcessTracer) OnJointCheckerFinished()   {}
+func (*noopCheckerProcessTracer) OnSplitCheckerFinished()   {}
+func (*noopCheckerProcessTracer) OnRuleCheckerFinished()    {}
+func (*noopCheckerProcessTracer) OnMergeCheckerFinished()   {}
+func (*noopCheckerProcessTracer) OnReplicaCheckerFinished() {}
+func (*noopCheckerProcessTracer) OnAllStageFinished()       {}
+func (*noopCheckerProcessTracer) LogFields() []zap.Field {
+	return nil
+}
+
 // RegionHeartbeatProcessTracer is used to trace the process of handling region heartbeat.
 type RegionHeartbeatProcessTracer interface {
-	Begin()
+	ProcessTracer
 	OnPreCheckFinished()
 	OnAsyncHotStatsFinished()
 	OnRegionGuideFinished()
@@ -112,8 +249,6 @@ type RegionHeartbeatProcessTracer interface {
 	OnSetRegionFinished()
 	OnUpdateSubTreeFinished()
 	OnCollectRegionStatsFinished()
-	OnAllStageFinished()
-	LogFields() []zap.Field
 }
 
 type noopHeartbeatProcessTracer struct{}

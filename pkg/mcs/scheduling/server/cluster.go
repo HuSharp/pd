@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/tikv/pd/pkg/core/breakdown"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -553,16 +554,16 @@ func (c *Cluster) IsBackgroundJobsRunning() bool {
 
 // HandleRegionHeartbeat processes RegionInfo reports from client.
 func (c *Cluster) HandleRegionHeartbeat(region *core.RegionInfo) error {
-	tracer := core.NewNoopHeartbeatProcessTracer()
+	tracer := breakdown.NewNoopHeartbeatProcessTracer()
 	if c.persistConfig.GetScheduleConfig().EnableHeartbeatBreakdownMetrics {
-		tracer = core.NewHeartbeatProcessTracer()
+		tracer = breakdown.NewHeartbeatProcessTracer()
 	}
 	var runner ratelimit.Runner
 	runner = syncRunner
 	if c.persistConfig.GetScheduleConfig().EnableHeartbeatConcurrentRunner {
 		runner = c.taskRunner
 	}
-	ctx := &core.MetaProcessContext{
+	ctx := &breakdown.MetaProcessContext{
 		Context:    c.ctx,
 		Limiter:    c.hbConcurrencyLimiter,
 		Tracer:     tracer,
@@ -579,8 +580,8 @@ func (c *Cluster) HandleRegionHeartbeat(region *core.RegionInfo) error {
 }
 
 // processRegionHeartbeat updates the region information.
-func (c *Cluster) processRegionHeartbeat(ctx *core.MetaProcessContext, region *core.RegionInfo) error {
-	tracer := ctx.Tracer
+func (c *Cluster) processRegionHeartbeat(ctx *breakdown.MetaProcessContext, region *core.RegionInfo) error {
+	tracer := ctx.Tracer.(breakdown.RegionHeartbeatProcessTracer)
 	origin, _, err := c.PreCheckPutRegion(region)
 	tracer.OnPreCheckFinished()
 	if err != nil {

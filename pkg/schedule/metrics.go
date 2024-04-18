@@ -40,10 +40,19 @@ var (
 			Name:      "patrol_regions_time",
 			Help:      "Time spent of patrol checks region.",
 		})
+
+	checkRegionsGauge = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: "pd",
+			Subsystem: "checker",
+			Name:      "region_check_time",
+			Help:      "Bucketed histogram of processing time (s) of waiting for acquiring regions lock.",
+		})
 )
 
 func init() {
 	prometheus.MustRegister(hotSpotStatusGauge)
 	prometheus.MustRegister(regionListGauge)
 	prometheus.MustRegister(patrolCheckRegionsGauge)
+	prometheus.MustRegister(checkRegionsGauge)
 }

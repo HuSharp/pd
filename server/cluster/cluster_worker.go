@@ -16,6 +16,7 @@ package cluster
 
 import (
 	"bytes"
+	"github.com/tikv/pd/pkg/core/breakdown"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/kvproto/pkg/metapb"
@@ -35,16 +36,16 @@ import (
 
 // HandleRegionHeartbeat processes RegionInfo reports from client.
 func (c *RaftCluster) HandleRegionHeartbeat(region *core.RegionInfo) error {
-	tracer := core.NewNoopHeartbeatProcessTracer()
+	tracer := breakdown.NewNoopHeartbeatProcessTracer()
 	if c.GetScheduleConfig().EnableHeartbeatBreakdownMetrics {
-		tracer = core.NewHeartbeatProcessTracer()
+		tracer = breakdown.NewHeartbeatProcessTracer()
 	}
 	var runner ratelimit.Runner
 	runner = syncRunner
 	if c.GetScheduleConfig().EnableHeartbeatConcurrentRunner {
 		runner = c.taskRunner
 	}
-	ctx := &core.MetaProcessContext{
+	ctx := &breakdown.MetaProcessContext{
 		Context:    c.ctx,
 		Limiter:    c.hbConcurrencyLimiter,
 		Tracer:     tracer,

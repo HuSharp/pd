@@ -16,6 +16,7 @@ package checker
 
 import (
 	"context"
+	"github.com/tikv/pd/pkg/core/breakdown"
 	"time"
 
 	"github.com/pingcap/failpoint"
@@ -73,7 +74,7 @@ func NewController(ctx context.Context, cluster sche.CheckerCluster, conf config
 }
 
 // CheckRegion will check the region and add a new operator if needed.
-func (c *Controller) CheckRegion(region *core.RegionInfo) []*operator.Operator {
+func (c *Controller) CheckRegion(ctx *breakdown.MetaProcessContext, region *core.RegionInfo) []*operator.Operator {
 	// If PD has restarted, it needs to check learners added before and promote them.
 	// Don't check isRaftLearnerEnabled cause it maybe disable learner feature but there are still some learners to promote.
 	opController := c.opController

@@ -50,7 +50,7 @@ type ConcurrentRunner struct {
 	maxPendingDuration time.Duration
 	taskChan           chan *Task
 	pendingTasks       []*Task
-	pendingMu          sync.Mutex
+	pendingMu          sync.RWMutex
 	stopChan           chan struct{}
 	wg                 sync.WaitGroup
 }
@@ -151,6 +151,24 @@ func (s *ConcurrentRunner) RunTask(ctx context.Context, opt TaskOpts, f func(con
 		s.pendingTasks = append(s.pendingTasks, task)
 	}
 	return nil
+}
+
+func (s *ConcurrentRunner) Wait() {
+	for {
+		s.pendingMu.RLock()
+		if len(s.pendingTasks) == 0 {
+			s.pendingMu.RUnlock()
+			return
+		}
+		if len(s.pendingTasks) > 0 {
+			maxWait := time.Since(s.pendingTasks[0].submittedAt)
+			if maxWait > s.maxPendingDuration {
+				s.pendingMu.RUnlock()
+				return
+			}
+		}
+		s.pendingMu.RUnlock()
+	}
 }
 
 // SyncRunner is a simple task runner that limits the number of concurrent tasks.

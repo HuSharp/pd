@@ -178,7 +178,7 @@ func (c *RuleChecker) CheckWithFit(region *core.RegionInfo, fit *placement.Regio
 	return nil
 }
 
-// RecordRegionPromoteToNonWitness put the recently switch non-witness region into cache. RuleChecker
+// RecordRegionPromoteToNonWitness put the recent switch non-witness region into cache. RuleChecker
 // will skip switch it back to witness for a while.
 func (c *RuleChecker) RecordRegionPromoteToNonWitness(regionID uint64) {
 	c.switchWitnessCache.PutWithTTL(regionID, nil, c.cluster.GetCheckerConfig().GetSwitchWitnessInterval())

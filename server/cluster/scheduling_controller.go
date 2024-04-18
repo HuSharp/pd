@@ -447,7 +447,7 @@ func (sc *schedulingController) ClearSuspectRegions() {
 	sc.coordinator.GetCheckerController().ClearSuspectRegions()
 }
 
-// AddSuspectKeyRange adds the key range with the its ruleID as the key
+// AddSuspectKeyRange adds the key range with the ruleID as the key
 // The instance of each keyRange is like following format:
 // [2][]byte: start key/end key
 func (sc *schedulingController) AddSuspectKeyRange(start, end []byte) {

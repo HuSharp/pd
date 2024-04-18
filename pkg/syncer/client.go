@@ -16,6 +16,7 @@ package syncer
 
 import (
 	"context"
+	"github.com/tikv/pd/pkg/core/breakdown"
 	"time"
 
 	"github.com/docker/go-units"
@@ -206,10 +207,10 @@ func (s *RegionSyncer) StartSyncWithLeader(addr string) {
 						log.Debug("region is stale", zap.Stringer("origin", origin.GetMeta()), errs.ZapError(err))
 						continue
 					}
-					ctx := &core.MetaProcessContext{
+					ctx := &breakdown.MetaProcessContext{
 						Context:    ctx,
 						TaskRunner: ratelimit.NewSyncRunner(),
-						Tracer:     core.NewNoopHeartbeatProcessTracer(),
+						Tracer:     breakdown.NewNoopHeartbeatProcessTracer(),
 						// no limit for followers.
 					}
 					saveKV, _, _ := regionGuide(ctx, region, origin)

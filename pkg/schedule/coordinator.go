@@ -17,6 +17,9 @@ package schedule
 import (
 	"bytes"
 	"context"
+	"github.com/tikv/pd/pkg/core/breakdown"
+	"github.com/tikv/pd/pkg/ratelimit"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -52,11 +55,14 @@ const (
 	// pushOperatorTickInterval is the interval try to push the operator.
 	pushOperatorTickInterval = 500 * time.Millisecond
 
-	patrolScanRegionLimit = 128 // It takes about 14 minutes to iterate 1 million regions.
+	patrolScanRegionLimit = 1024 // It takes about 14 minutes to iterate 1 million regions.
 	// PluginLoad means action for load plugin
 	PluginLoad = "PluginLoad"
 	// PluginUnload means action for unload plugin
 	PluginUnload = "PluginUnload"
+
+	// checker relative const
+	checkerConcurrentRunner = "checker-concurrent-task-runner"
 )
 
 var (
@@ -167,6 +173,14 @@ func (c *Coordinator) PatrolRegions() {
 		key     []byte
 		regions []*core.RegionInfo
 	)
+
+	ctx := &breakdown.MetaProcessContext{
+		Context:    c.ctx,
+		Tracer:     breakdown.NewCheckerProcessTracer(),
+		TaskRunner: ratelimit.NewConcurrentRunner(checkerConcurrentRunner, 1*time.Minute),
+		Limiter:    ratelimit.NewConcurrencyLimiter(uint64(runtime.NumCPU() * 2)),
+	}
+
 	for {
 		select {
 		case <-ticker.C:
@@ -181,20 +195,22 @@ func (c *Coordinator) PatrolRegions() {
 		if c.isSchedulingHalted() {
 			continue
 		}
+		ctx.Tracer.Begin()
 
 		// Check priority regions first.
-		c.checkPriorityRegions()
-		// Check suspect regions first.
-		c.checkSuspectRegions()
-		// Check regions in the waiting list
-		c.checkWaitingRegions()
+		c.checkPriorityRegions(ctx)
 
-		key, regions = c.checkRegions(key)
+		// Check suspect regions first.
+		c.checkSuspectRegions(ctx)
+		// Check regions in the waiting list
+		c.checkWaitingRegions(ctx)
+
+		key, regions = c.checkRegions(ctx, key)
 		if len(regions) == 0 {
 			continue
 		}
-		// Updates the label level isolation statistics.
 		c.cluster.UpdateRegionsLabelLevelStats(regions)
+		ctx.Tracer.OnAllStageFinished()
 		if len(key) == 0 {
 			dur := time.Since(start)
 			patrolCheckRegionsGauge.Set(dur.Seconds())
@@ -211,7 +227,18 @@ func (c *Coordinator) isSchedulingHalted() bool {
 	return c.cluster.GetSchedulerConfig().IsSchedulingHalted()
 }
 
-func (c *Coordinator) checkRegions(startKey []byte) (key []byte, regions []*core.RegionInfo) {
+var coordinatorPool = sync.Pool{
+	New: func() interface{} {
+		return func(w *sync.WaitGroup, r *core.RegionInfo, f func(w *sync.WaitGroup, r *core.RegionInfo)) {
+			go f(w, r)
+		}
+	},
+}
+
+// make check regions parallel
+// scan all regions
+// can be optimized by parallel scan
+func (c *Coordinator) checkRegions(ctx *breakdown.MetaProcessContext, startKey []byte) (key []byte, regions []*core.RegionInfo) {
 	regions = c.cluster.ScanRegions(startKey, nil, patrolScanRegionLimit)
 	if len(regions) == 0 {
 		// Resets the scan key.
@@ -219,31 +246,82 @@ func (c *Coordinator) checkRegions(startKey []byte) (key []byte, regions []*core
 		return
 	}
 
-	for _, region := range regions {
-		c.tryAddOperators(region)
-		key = region.GetEndKey()
+	start := time.Now()
+
+	//c.cluster.GetCheckerConfig().GetWorkerCnt()
+	cnt := 128
+	// divide regions length by cnt
+	var wg sync.WaitGroup
+	wg.Add(len(regions))
+	for i := 0; i < len(regions); i += cnt {
+		for j := i; j < i+cnt && j < len(regions); j += 1 {
+			curRegion := regions[j]
+			// Use the pool
+			item := coordinatorPool.Get().(func(*sync.WaitGroup, *core.RegionInfo, func(*sync.WaitGroup, *core.RegionInfo)))
+			item(&wg, curRegion, func(w *sync.WaitGroup, r *core.RegionInfo) {
+				c.tryAddOperators(ctx, r)
+				w.Done()
+			})
+			coordinatorPool.Put(item)
+			key = curRegion.GetEndKey()
+		}
 	}
+
+	wg.Wait()
+
+	dur := time.Since(start)
+	checkRegionsGauge.Set(dur.Seconds())
+
 	return
 }
 
-func (c *Coordinator) checkSuspectRegions() {
-	for _, id := range c.checkers.GetSuspectRegions() {
+func (c *Coordinator) checkSuspectRegions(ctx *breakdown.MetaProcessContext) {
+	//for _, region := range regions {
+	//	go func(w *sync.WaitGroup, r *core.RegionInfo) {
+	//		c.tryAddOperators(ctx, r)
+	//		w.Done()
+	//	}(&wg, region)
+	//	key = region.GetEndKey()
+	//}
+	//wg.Wait()
+
+	items := c.checkers.GetSuspectRegions()
+	var wg sync.WaitGroup
+	wg.Add(len(items))
+	for _, id := range items {
 		region := c.cluster.GetRegion(id)
-		c.tryAddOperators(region)
+		// Use the pool
+		item := coordinatorPool.Get().(func(*sync.WaitGroup, *core.RegionInfo, func(*sync.WaitGroup, *core.RegionInfo)))
+		item(&wg, region, func(w *sync.WaitGroup, r *core.RegionInfo) {
+			c.tryAddOperators(ctx, r)
+			w.Done()
+		})
+		coordinatorPool.Put(item)
 	}
+	wg.Wait()
 }
 
-func (c *Coordinator) checkWaitingRegions() {
+func (c *Coordinator) checkWaitingRegions(ctx *breakdown.MetaProcessContext) {
 	items := c.checkers.GetWaitingRegions()
 	waitingListGauge.Set(float64(len(items)))
+
+	var wg sync.WaitGroup
+	wg.Add(len(items))
 	for _, item := range items {
 		region := c.cluster.GetRegion(item.Key)
-		c.tryAddOperators(region)
+		// Use the pool
+		item := coordinatorPool.Get().(func(*sync.WaitGroup, *core.RegionInfo, func(*sync.WaitGroup, *core.RegionInfo)))
+		item(&wg, region, func(w *sync.WaitGroup, r *core.RegionInfo) {
+			c.tryAddOperators(ctx, r)
+			w.Done()
+		})
+		coordinatorPool.Put(item)
 	}
+	wg.Wait()
 }
 
 // checkPriorityRegions checks priority regions
-func (c *Coordinator) checkPriorityRegions() {
+func (c *Coordinator) checkPriorityRegions(ctx *breakdown.MetaProcessContext) {
 	items := c.checkers.GetPriorityRegions()
 	removes := make([]uint64, 0)
 	priorityListGauge.Set(float64(len(items)))
@@ -253,7 +331,7 @@ func (c *Coordinator) checkPriorityRegions() {
 			removes = append(removes, id)
 			continue
 		}
-		ops := c.checkers.CheckRegion(region)
+		ops := c.checkers.CheckRegion(ctx, region)
 		// it should skip if region needs to merge
 		if len(ops) == 0 || ops[0].Kind()&operator.OpMerge != 0 {
 			continue
@@ -307,7 +385,7 @@ func (c *Coordinator) checkSuspectRanges() {
 	}
 }
 
-func (c *Coordinator) tryAddOperators(region *core.RegionInfo) {
+func (c *Coordinator) tryAddOperators(ctx *breakdown.MetaProcessContext, region *core.RegionInfo) {
 	if region == nil {
 		// the region could be recent split, continue to wait.
 		return
@@ -318,7 +396,7 @@ func (c *Coordinator) tryAddOperators(region *core.RegionInfo) {
 		c.checkers.RemoveSuspectRegion(id)
 		return
 	}
-	ops := c.checkers.CheckRegion(region)
+	ops := c.checkers.CheckRegion(ctx, region)
 	if len(ops) == 0 {
 		return
 	}

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package breakdown
 
 import (
 	"context"
@@ -23,17 +23,28 @@ import (
 // MetaProcessContext is a context for meta process.
 type MetaProcessContext struct {
 	context.Context
-	Tracer     RegionHeartbeatProcessTracer
+	Tracer     ProcessTracer
 	TaskRunner ratelimit.Runner
 	Limiter    *ratelimit.ConcurrencyLimiter
 }
 
-// NewMetaProcessContext creates a new MetaProcessContext.
+// ContextTODO creates a new MetaProcessContext.
 // used in tests, can be changed if no need to test concurrency.
 func ContextTODO() *MetaProcessContext {
 	return &MetaProcessContext{
 		Context:    context.TODO(),
 		Tracer:     NewNoopHeartbeatProcessTracer(),
+		TaskRunner: ratelimit.NewSyncRunner(),
+		// Limit default is nil
+	}
+}
+
+// CheckerContextTODO creates a new MetaProcessContext.
+// used in tests, can be changed if no need to test concurrency.
+func CheckerContextTODO() *MetaProcessContext {
+	return &MetaProcessContext{
+		Context:    context.TODO(),
+		Tracer:     NewNoopCheckerProcessTracer(),
 		TaskRunner: ratelimit.NewSyncRunner(),
 		// Limit default is nil
 	}

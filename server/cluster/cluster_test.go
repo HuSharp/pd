@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/tikv/pd/pkg/core/breakdown"
 	"math"
 	"math/rand"
 	"net/http"
@@ -631,7 +632,7 @@ func TestRegionHeartbeatHotStat(t *testing.T) {
 	region := core.NewRegionInfo(regionMeta, leader, core.WithInterval(&pdpb.TimeInterval{StartTimestamp: 0, EndTimestamp: utils.RegionHeartBeatReportInterval}),
 		core.SetWrittenBytes(30000*10),
 		core.SetWrittenKeys(300000*10))
-	err = cluster.processRegionHeartbeat(core.ContextTODO(), region)
+	err = cluster.processRegionHeartbeat(breakdown.ContextTODO(), region)
 	re.NoError(err)
 	// wait HotStat to update items
 	time.Sleep(time.Second)
@@ -644,7 +645,7 @@ func TestRegionHeartbeatHotStat(t *testing.T) {
 		StoreId: 4,
 	}
 	region = region.Clone(core.WithRemoveStorePeer(2), core.WithAddPeer(newPeer))
-	err = cluster.processRegionHeartbeat(core.ContextTODO(), region)
+	err = cluster.processRegionHeartbeat(breakdown.ContextTODO(), region)
 	re.NoError(err)
 	// wait HotStat to update items
 	time.Sleep(time.Second)
@@ -681,8 +682,8 @@ func TestBucketHeartbeat(t *testing.T) {
 		re.NoError(cluster.putStoreLocked(store))
 	}
 
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), regions[0]))
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), regions[1]))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), regions[0]))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), regions[1]))
 	re.Nil(cluster.GetRegion(uint64(1)).GetBuckets())
 	re.NoError(cluster.processReportBuckets(buckets))
 	re.Equal(buckets, cluster.GetRegion(uint64(1)).GetBuckets())
@@ -701,13 +702,13 @@ func TestBucketHeartbeat(t *testing.T) {
 	// case5: region update should inherit buckets.
 	newRegion := regions[1].Clone(core.WithIncConfVer(), core.SetBuckets(nil))
 	opt.SetRegionBucketEnabled(true)
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), newRegion))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), newRegion))
 	re.Len(cluster.GetRegion(uint64(1)).GetBuckets().GetKeys(), 2)
 
 	// case6: disable region bucket in
 	opt.SetRegionBucketEnabled(false)
 	newRegion2 := regions[1].Clone(core.WithIncConfVer(), core.SetBuckets(nil))
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), newRegion2))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), newRegion2))
 	re.Nil(cluster.GetRegion(uint64(1)).GetBuckets())
 	re.Empty(cluster.GetRegion(uint64(1)).GetBuckets().GetKeys())
 }
@@ -733,25 +734,25 @@ func TestRegionHeartbeat(t *testing.T) {
 
 	for i, region := range regions {
 		// region does not exist.
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 		checkRegionsKV(re, cluster.storage, regions[:i+1])
 
 		// region is the same, not updated.
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 		checkRegionsKV(re, cluster.storage, regions[:i+1])
 		origin := region
 		// region is updated.
 		region = origin.Clone(core.WithIncVersion())
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 		checkRegionsKV(re, cluster.storage, regions[:i+1])
 
 		// region is stale (Version).
 		stale := origin.Clone(core.WithIncConfVer())
-		re.Error(cluster.processRegionHeartbeat(core.ContextTODO(), stale))
+		re.Error(cluster.processRegionHeartbeat(breakdown.ContextTODO(), stale))
 		checkRegions(re, cluster.core, regions[:i+1])
 		checkRegionsKV(re, cluster.storage, regions[:i+1])
 
@@ -761,13 +762,13 @@ func TestRegionHeartbeat(t *testing.T) {
 			core.WithIncConfVer(),
 		)
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 		checkRegionsKV(re, cluster.storage, regions[:i+1])
 
 		// region is stale (ConfVer).
 		stale = origin.Clone(core.WithIncConfVer())
-		re.Error(cluster.processRegionHeartbeat(core.ContextTODO(), stale))
+		re.Error(cluster.processRegionHeartbeat(breakdown.ContextTODO(), stale))
 		checkRegions(re, cluster.core, regions[:i+1])
 		checkRegionsKV(re, cluster.storage, regions[:i+1])
 
@@ -779,38 +780,38 @@ func TestRegionHeartbeat(t *testing.T) {
 			},
 		}))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Add a pending peer.
 		region = region.Clone(core.WithPendingPeers([]*metapb.Peer{region.GetPeers()[rand.Intn(len(region.GetPeers()))]}))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Clear down peers.
 		region = region.Clone(core.WithDownPeers(nil))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Clear pending peers.
 		region = region.Clone(core.WithPendingPeers(nil))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Remove peers.
 		origin = region
 		region = origin.Clone(core.SetPeers(region.GetPeers()[:1]))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 		checkRegionsKV(re, cluster.storage, regions[:i+1])
 		// Add peers.
 		region = origin
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 		checkRegionsKV(re, cluster.storage, regions[:i+1])
 
@@ -820,47 +821,47 @@ func TestRegionHeartbeat(t *testing.T) {
 			core.WithIncConfVer(),
 		)
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Change leader.
 		region = region.Clone(core.WithLeader(region.GetPeers()[1]))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Change ApproximateSize.
 		region = region.Clone(core.SetApproximateSize(144))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Change ApproximateKeys.
 		region = region.Clone(core.SetApproximateKeys(144000))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Change bytes written.
 		region = region.Clone(core.SetWrittenBytes(24000))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Change bytes read.
 		region = region.Clone(core.SetReadBytes(1080000))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 
 		// Flashback
 		region = region.Clone(core.WithFlashback(true, 1))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 		region = region.Clone(core.WithFlashback(false, 0))
 		regions[i] = region
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region))
 		checkRegions(re, cluster.core, regions[:i+1])
 	}
 
@@ -916,7 +917,7 @@ func TestRegionHeartbeat(t *testing.T) {
 			core.WithNewRegionID(10000),
 			core.WithDecVersion(),
 		)
-		re.Error(cluster.processRegionHeartbeat(core.ContextTODO(), overlapRegion))
+		re.Error(cluster.processRegionHeartbeat(breakdown.ContextTODO(), overlapRegion))
 		region := &metapb.Region{}
 		ok, err := storage.LoadRegion(regions[n-1].GetID(), region)
 		re.True(ok)
@@ -940,9 +941,9 @@ func TestRegionHeartbeat(t *testing.T) {
 			core.WithStartKey(regions[n-2].GetStartKey()),
 			core.WithNewRegionID(regions[n-1].GetID()+1),
 		)
-		tracer := core.NewHeartbeatProcessTracer()
+		tracer := breakdown.NewHeartbeatProcessTracer()
 		tracer.Begin()
-		ctx := core.ContextTODO()
+		ctx := breakdown.ContextTODO()
 		ctx.Tracer = tracer
 		re.NoError(cluster.processRegionHeartbeat(ctx, overlapRegion))
 		tracer.OnAllStageFinished()
@@ -978,7 +979,7 @@ func TestRegionFlowChanged(t *testing.T) {
 	regions := []*core.RegionInfo{core.NewTestRegionInfo(1, 1, []byte{}, []byte{})}
 	processRegions := func(regions []*core.RegionInfo) {
 		for _, r := range regions {
-			mctx := core.ContextTODO()
+			mctx := breakdown.ContextTODO()
 			mctx.Context = ctx
 			cluster.processRegionHeartbeat(mctx, r)
 		}
@@ -1016,7 +1017,7 @@ func TestRegionSizeChanged(t *testing.T) {
 		core.SetApproximateKeys(curMaxMergeKeys-1),
 		core.SetSource(core.Heartbeat),
 	)
-	cluster.processRegionHeartbeat(core.ContextTODO(), region)
+	cluster.processRegionHeartbeat(breakdown.ContextTODO(), region)
 	regionID := region.GetID()
 	re.True(cluster.regionStats.IsRegionStatsType(regionID, statistics.UndersizedRegion))
 	// Test ApproximateSize and ApproximateKeys change.
@@ -1026,16 +1027,16 @@ func TestRegionSizeChanged(t *testing.T) {
 		core.SetApproximateKeys(curMaxMergeKeys+1),
 		core.SetSource(core.Heartbeat),
 	)
-	cluster.processRegionHeartbeat(core.ContextTODO(), region)
+	cluster.processRegionHeartbeat(breakdown.ContextTODO(), region)
 	re.False(cluster.regionStats.IsRegionStatsType(regionID, statistics.UndersizedRegion))
 	// Test MaxMergeRegionSize and MaxMergeRegionKeys change.
 	cluster.opt.SetMaxMergeRegionSize(uint64(curMaxMergeSize + 2))
 	cluster.opt.SetMaxMergeRegionKeys(uint64(curMaxMergeKeys + 2))
-	cluster.processRegionHeartbeat(core.ContextTODO(), region)
+	cluster.processRegionHeartbeat(breakdown.ContextTODO(), region)
 	re.True(cluster.regionStats.IsRegionStatsType(regionID, statistics.UndersizedRegion))
 	cluster.opt.SetMaxMergeRegionSize(uint64(curMaxMergeSize))
 	cluster.opt.SetMaxMergeRegionKeys(uint64(curMaxMergeKeys))
-	cluster.processRegionHeartbeat(core.ContextTODO(), region)
+	cluster.processRegionHeartbeat(breakdown.ContextTODO(), region)
 	re.False(cluster.regionStats.IsRegionStatsType(regionID, statistics.UndersizedRegion))
 }
 
@@ -1098,11 +1099,11 @@ func TestConcurrentRegionHeartbeat(t *testing.T) {
 	re.NoError(failpoint.Enable("github.com/tikv/pd/server/cluster/concurrentRegionHeartbeat", "return(true)"))
 	go func() {
 		defer wg.Done()
-		cluster.processRegionHeartbeat(core.ContextTODO(), source)
+		cluster.processRegionHeartbeat(breakdown.ContextTODO(), source)
 	}()
 	time.Sleep(100 * time.Millisecond)
 	re.NoError(failpoint.Disable("github.com/tikv/pd/server/cluster/concurrentRegionHeartbeat"))
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), target))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), target))
 	wg.Wait()
 	checkRegion(re, cluster.GetRegionByKey([]byte{}), target)
 }
@@ -1164,7 +1165,7 @@ func TestRegionLabelIsolationLevel(t *testing.T) {
 func heartbeatRegions(re *require.Assertions, cluster *RaftCluster, regions []*core.RegionInfo) {
 	// Heartbeat and check region one by one.
 	for _, r := range regions {
-		re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), r))
+		re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), r))
 
 		checkRegion(re, cluster.GetRegion(r.GetID()), r)
 		checkRegion(re, cluster.GetRegionByKey(r.GetStartKey()), r)
@@ -1201,7 +1202,7 @@ func TestHeartbeatSplit(t *testing.T) {
 
 	// 1: [nil, nil)
 	region1 := core.NewRegionInfo(&metapb.Region{Id: 1, RegionEpoch: &metapb.RegionEpoch{Version: 1, ConfVer: 1}}, nil)
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region1))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region1))
 	checkRegion(re, cluster.GetRegionByKey([]byte("foo")), region1)
 
 	// split 1 to 2: [nil, m) 1: [m, nil), sync 2 first.
@@ -1210,12 +1211,12 @@ func TestHeartbeatSplit(t *testing.T) {
 		core.WithIncVersion(),
 	)
 	region2 := core.NewRegionInfo(&metapb.Region{Id: 2, EndKey: []byte("m"), RegionEpoch: &metapb.RegionEpoch{Version: 1, ConfVer: 1}}, nil)
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region2))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region2))
 	checkRegion(re, cluster.GetRegionByKey([]byte("a")), region2)
 	// [m, nil) is missing before r1's heartbeat.
 	re.Nil(cluster.GetRegionByKey([]byte("z")))
 
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region1))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region1))
 	checkRegion(re, cluster.GetRegionByKey([]byte("z")), region1)
 
 	// split 1 to 3: [m, q) 1: [q, nil), sync 1 first.
@@ -1224,12 +1225,12 @@ func TestHeartbeatSplit(t *testing.T) {
 		core.WithIncVersion(),
 	)
 	region3 := core.NewRegionInfo(&metapb.Region{Id: 3, StartKey: []byte("m"), EndKey: []byte("q"), RegionEpoch: &metapb.RegionEpoch{Version: 1, ConfVer: 1}}, nil)
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region1))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region1))
 	checkRegion(re, cluster.GetRegionByKey([]byte("z")), region1)
 	checkRegion(re, cluster.GetRegionByKey([]byte("a")), region2)
 	// [m, q) is missing before r3's heartbeat.
 	re.Nil(cluster.GetRegionByKey([]byte("n")))
-	re.NoError(cluster.processRegionHeartbeat(core.ContextTODO(), region3))
+	re.NoError(cluster.processRegionHeartbeat(breakdown.ContextTODO(), region3))
 	checkRegion(re, cluster.GetRegionByKey([]byte("n")), region3)
 }
 
@@ -1525,11 +1526,11 @@ func TestUpdateStorePendingPeerCount(t *testing.T) {
 		},
 	}
 	origin := core.NewRegionInfo(&metapb.Region{Id: 1, Peers: peers[:3]}, peers[0], core.WithPendingPeers(peers[1:3]))
-	re.NoError(tc.processRegionHeartbeat(core.ContextTODO(), origin))
+	re.NoError(tc.processRegionHeartbeat(breakdown.ContextTODO(), origin))
 	time.Sleep(50 * time.Millisecond)
 	checkPendingPeerCount([]int{0, 1, 1, 0}, tc.RaftCluster, re)
 	newRegion := core.NewRegionInfo(&metapb.Region{Id: 1, Peers: peers[1:]}, peers[1], core.WithPendingPeers(peers[3:4]))
-	re.NoError(tc.processRegionHeartbeat(core.ContextTODO(), newRegion))
+	re.NoError(tc.processRegionHeartbeat(breakdown.ContextTODO(), newRegion))
 	time.Sleep(50 * time.Millisecond)
 	checkPendingPeerCount([]int{0, 0, 0, 1}, tc.RaftCluster, re)
 }
@@ -2597,7 +2598,7 @@ func prepare(setCfg func(*sc.ScheduleConfig), setTc func(*testCluster), run func
 }
 
 func checkRegionAndOperator(re *require.Assertions, tc *testCluster, co *schedule.Coordinator, regionID uint64, expectAddOperator int) {
-	ops := co.GetCheckerController().CheckRegion(tc.GetRegion(regionID))
+	ops := co.GetCheckerController().CheckRegion(breakdown.CheckerContextTODO(), tc.GetRegion(regionID))
 	if ops == nil {
 		re.Equal(0, expectAddOperator)
 	} else {
@@ -2959,12 +2960,12 @@ func TestShouldRun(t *testing.T) {
 	for _, testCase := range testCases {
 		r := tc.GetRegion(testCase.regionID)
 		nr := r.Clone(core.WithLeader(r.GetPeers()[0]), core.SetSource(core.Heartbeat))
-		re.NoError(tc.processRegionHeartbeat(core.ContextTODO(), nr))
+		re.NoError(tc.processRegionHeartbeat(breakdown.ContextTODO(), nr))
 		re.Equal(testCase.ShouldRun, co.ShouldRun())
 	}
 	nr := &metapb.Region{Id: 6, Peers: []*metapb.Peer{}}
 	newRegion := core.NewRegionInfo(nr, nil, core.SetSource(core.Heartbeat))
-	re.Error(tc.processRegionHeartbeat(core.ContextTODO(), newRegion))
+	re.Error(tc.processRegionHeartbeat(breakdown.ContextTODO(), newRegion))
 	re.Equal(7, tc.core.GetClusterNotFromStorageRegionsCnt())
 }
 
@@ -3002,12 +3003,12 @@ func TestShouldRunWithNonLeaderRegions(t *testing.T) {
 	for _, testCase := range testCases {
 		r := tc.GetRegion(testCase.regionID)
 		nr := r.Clone(core.WithLeader(r.GetPeers()[0]), core.SetSource(core.Heartbeat))
-		re.NoError(tc.processRegionHeartbeat(core.ContextTODO(), nr))
+		re.NoError(tc.processRegionHeartbeat(breakdown.ContextTODO(), nr))
 		re.Equal(testCase.ShouldRun, co.ShouldRun())
 	}
 	nr := &metapb.Region{Id: 9, Peers: []*metapb.Peer{}}
 	newRegion := core.NewRegionInfo(nr, nil, core.SetSource(core.Heartbeat))
-	re.Error(tc.processRegionHeartbeat(core.ContextTODO(), newRegion))
+	re.Error(tc.processRegionHeartbeat(breakdown.ContextTODO(), newRegion))
 	re.Equal(9, tc.core.GetClusterNotFromStorageRegionsCnt())
 
 	// Now, after server is prepared, there exist some regions with no leader.

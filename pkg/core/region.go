@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/tikv/pd/pkg/core/breakdown"
 	"math"
 	"reflect"
 	"sort"
@@ -713,7 +714,7 @@ func (r *RegionInfo) isRegionRecreated() bool {
 
 // RegionGuideFunc is a function that determines which follow-up operations need to be performed based on the origin
 // and new region information.
-type RegionGuideFunc func(ctx *MetaProcessContext, region, origin *RegionInfo) (saveKV, saveCache, needSync bool)
+type RegionGuideFunc func(ctx *breakdown.MetaProcessContext, region, origin *RegionInfo) (saveKV, saveCache, needSync bool)
 
 // GenerateRegionGuideFunc is used to generate a RegionGuideFunc. Control the log output by specifying the log function.
 // nil means do not print the log.
@@ -726,7 +727,7 @@ func GenerateRegionGuideFunc(enableLog bool) RegionGuideFunc {
 	}
 	// Save to storage if meta is updated.
 	// Save to cache if meta or leader is updated, or contains any down/pending peer.
-	return func(ctx *MetaProcessContext, region, origin *RegionInfo) (saveKV, saveCache, needSync bool) {
+	return func(ctx *breakdown.MetaProcessContext, region, origin *RegionInfo) (saveKV, saveCache, needSync bool) {
 		taskRunner := ctx.TaskRunner
 		limiter := ctx.Limiter
 		// print log asynchronously
@@ -980,8 +981,8 @@ func convertItemsToRegions(items []*regionItem) []*RegionInfo {
 }
 
 // AtomicCheckAndPutRegion checks if the region is valid to put, if valid then put.
-func (r *RegionsInfo) AtomicCheckAndPutRegion(ctx *MetaProcessContext, region *RegionInfo) ([]*RegionInfo, error) {
-	tracer := ctx.Tracer
+func (r *RegionsInfo) AtomicCheckAndPutRegion(ctx *breakdown.MetaProcessContext, region *RegionInfo) ([]*RegionInfo, error) {
+	tracer := ctx.Tracer.(breakdown.RegionHeartbeatProcessTracer)
 	r.t.Lock()
 	var ols []*regionItem
 	origin := r.getRegionLocked(region.GetID())
@@ -1767,10 +1768,10 @@ func (r *RegionsInfo) CollectWaitLockMetrics() {
 		return
 	}
 
-	waitRegionsLockDurationSum.Add(time.Duration(regionsLockTotalWaitTime - lastRegionsLockTotalWaitTime).Seconds())
-	waitRegionsLockCount.Add(float64(regionsLockCount - lastsRegionsLockCount))
-	waitSubRegionsLockDurationSum.Add(time.Duration(subRegionsLockTotalWaitTime - lastSubRegionsLockTotalWaitTime).Seconds())
-	waitSubRegionsLockCount.Add(float64(subRegionsLockCount - lastSubRegionsLockCount))
+	breakdown.WaitRegionsLockDurationSum.Add(time.Duration(regionsLockTotalWaitTime - lastRegionsLockTotalWaitTime).Seconds())
+	breakdown.WaitRegionsLockCount.Add(float64(regionsLockCount - lastsRegionsLockCount))
+	breakdown.WaitSubRegionsLockDurationSum.Add(time.Duration(subRegionsLockTotalWaitTime - lastSubRegionsLockTotalWaitTime).Seconds())
+	breakdown.WaitSubRegionsLockCount.Add(float64(subRegionsLockCount - lastSubRegionsLockCount))
 }
 
 // GetAdjacentRegions returns region's info that is adjacent with specific region

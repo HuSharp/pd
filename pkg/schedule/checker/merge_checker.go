@@ -71,6 +71,8 @@ var (
 	mergeCheckerAdjAbnormalPeerStoreCounter = checkerCounter.WithLabelValues(mergeCheckerName, "adj-abnormal-peerstore")
 	mergeCheckerAdjSpecialPeerCounter       = checkerCounter.WithLabelValues(mergeCheckerName, "adj-special-peer")
 	mergeCheckerAdjAbnormalReplicaCounter   = checkerCounter.WithLabelValues(mergeCheckerName, "adj-abnormal-replica")
+
+	regionCheckerDuration = checkerCounter.WithLabelValues("regionCheck", "check")
 )
 
 // MergeChecker ensures region to merge with adjacent region when size is small
