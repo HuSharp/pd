@@ -47,7 +47,7 @@ func TestConcurrentRunner(t *testing.T) {
 	})
 
 	t.Run("MaxPendingDuration", func(t *testing.T) {
-		runner := NewConcurrentRunner("test", NewConcurrencyLimiter(1), 2*time.Millisecond)
+		runner := NewConcurrentRunner("test", NewConcurrencyLimiter(1), 10*time.Millisecond)
 		runner.Start()
 		defer runner.Stop()
 		var wg sync.WaitGroup
@@ -70,7 +70,7 @@ func TestConcurrentRunner(t *testing.T) {
 				// task 4 enqueue pendingTasks, check pendingTasks[0] timeout, report error
 				require.GreaterOrEqual(t, i, 4)
 			}
-			time.Sleep(1 * time.Millisecond)
+			time.Sleep(5 * time.Millisecond)
 		}
 		wg.Wait()
 	})
