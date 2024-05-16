@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	testAddrMutex syncutil.Mutex
+	testAddrMutex = &syncutil.Mutex{}
 	testAddrMap   = make(map[string]struct{})
 )
 
@@ -62,4 +62,11 @@ func tryAllocTestURL() string {
 	}
 	testAddrMap[addr] = struct{}{}
 	return addr
+}
+
+// SetTestAddrMap sets the test address map.
+// It is only used for `pd-ut` for now.
+func SetTestAddrMap(mutex *syncutil.Mutex, tmp map[string]struct{}) {
+	testAddrMutex = mutex
+	testAddrMap = tmp
 }

@@ -33,6 +33,8 @@ import (
 	"time"
 
 	// Set the correct value when it runs inside docker.
+	"github.com/tikv/pd/pkg/utils/syncutil"
+	"github.com/tikv/pd/pkg/utils/tempurl"
 	_ "go.uber.org/automaxprocs"
 )
 
@@ -93,6 +95,9 @@ var (
 )
 
 func main() {
+	var mu syncutil.Mutex
+	tempurl.SetTestAddrMap(&mu, make(map[string]struct{}))
+
 	race = handleFlag("--race")
 	junitFile = stripFlag("--junitfile")
 
