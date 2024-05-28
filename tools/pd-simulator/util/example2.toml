@@ -1,0 +1,81 @@
+mode = ""
+ConfigFile = ""
+pd-endpoints = "127.0.0.1:2379"
+status = "127.0.0.1:10081"
+ca-path = ""
+cert-path = ""
+key-path = ""
+
+[log]
+  level = ""
+  format = ""
+  disable-timestamp = false
+  development = false
+  disable-caller = false
+  disable-stacktrace = false
+  disable-error-verbose = false
+  error-output-path = ""
+  [log.file]
+    filename = ""
+    max-size = 0
+    max-days = 0
+    max-backups = 0
+
+[API]
+  client = 1
+  QPS = 1
+  Burst = 1
+  HTTPCases = ""
+  GRPCCases = ""
+  [API.http]
+  [API.grpc]
+  [API.etcd]
+
+[TSO]
+  client = 1
+  duration = 60000000000
+  count = 1
+  concurrency = 1000
+  dc-location = "global"
+  verbose = false
+  interval = 1000000000
+  max-batch-wait-interval = 0
+  enable-tso-follower-proxy = false
+  enable-fault-injection = false
+  fault-injection-rate = 0.01
+  max-tso-send-interval-ms = 0
+  keyspace-id = 0
+  keyspace-name = ""
+
+[Heartbeat]
+  epoch-ver = 1
+  store-count = 50
+  hot-store-count = 0
+  region-count = 1000000
+  replica = 3
+  leader-update-ratio = 0.06
+  epoch-update-ratio = 0.0
+  space-update-ratio = 0.0
+  flow-update-ratio = 0.0
+  report-ratio = 1.0
+  sample = false
+  round = 0
+
+[Simulator]
+  case = "default"
+  server-log-level = "info"
+  sim-log = "info"
+  total-store = 3
+  total-region = 1000
+  enable-transfer-region-counter = false
+  sim-tick-interval = "100ms"
+  store-io-per-second = 40
+  store-version = "v8.2.0-alpha-53-gbeb91c139-dirty"
+  [Simulator.raftstore]
+    capacity = 1099511627776
+    extra-used-space = 0
+    pd-heartbeat-tick-interval = "1m0s"
+    pd-store-heartbeat-tick-interval = "10s"
+  [Simulator.coprocessor]
+    region-split-size = 100663296
+    region-split-keys = 960000

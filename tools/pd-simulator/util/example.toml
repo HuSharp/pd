@@ -1,0 +1,56 @@
+#pd-endpoints = "127.0.0.1:2379"
+mode = ""
+config-file = ""
+status = "127.0.0.1:10081"
+ca-path = ""
+cert-path = ""
+key-path = ""
+
+[api]
+    client = 1
+    [http]
+        name = "GetRegionStatus"
+        qps = 1000
+        burst = 2
+    [grpc]
+        name = "GetRegion"
+        qps = 10000
+        burst = 1
+    [etcd]
+        name = "Get"
+        qps = 1
+        burst = 1
+
+[tso]
+    client = 1
+    duration = 60000000000
+    count = 1
+    concurrency = 1
+    dc-location = ""
+    verbose = false
+    interval = 0
+
+[hearbeat]
+    round = 0
+
+    store-count = 10
+    region-count = 20000
+
+    replica = 3
+
+    leader-update-ratio = 0.06
+    epoch-update-ratio = 0.0
+    space-update-ratio = 0.0
+    flow-update-ratio = 0.0
+    no-update-ratio = 0.0
+
+    sample = false
+
+[simulator]
+    case-name = ""
+    server-log-level = "info"
+    sim-log-level = "info"
+    total-store = 3
+    total-region = 1000
+    enable-transfer-region-counter = false
+    sim-tick-interval = "100ms"
