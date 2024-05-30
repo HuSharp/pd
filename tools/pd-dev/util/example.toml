@@ -1,0 +1,35 @@
+pd = "127.0.0.1:2379"
+
+
+[api]
+    [http]
+        [http.GetRegionStatus]
+        qps = 1000
+        burst = 2
+    [grpc]
+        [grpc.GetRegion]
+        qps = 10000
+        burst = 1
+        [grpc.GetStores]
+        qps = 1000
+        burst = 1
+    [etcd]
+        [etcd.Get]
+        qps = 1
+        burst = 1
+
+[hearbear]
+    round = 0
+
+    store-count = 100
+    region-count = 2000000
+
+    replica = 3
+
+    leader-update-ratio = 0.06
+    epoch-update-ratio = 0.0
+    space-update-ratio = 0.0
+    flow-update-ratio = 0.0
+    no-update-ratio = 0.0
+
+    sample = false

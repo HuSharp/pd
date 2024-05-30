@@ -1,6 +1,6 @@
-# pd-simulator
+# pd-dev
 
-pd-simulator is a tool for developing and testing PD. It provides the following functions:
+pd-dev is a tool for developing and testing PD. It provides the following functions:
 
 - [pd-api-bench](./pd-api-bench/README.md): A tool for testing the performance of PD's API.
 - [pd-tso-bench](./pd-tso-bench/README.md): A tool for testing the performance of PD's TSO.
@@ -12,33 +12,33 @@ pd-simulator is a tool for developing and testing PD. It provides the following 
 ## Build
 
 1. [Go](https://golang.org/) Version 1.21 or later
-2. In the root directory of the [PD project](https://github.com/tikv/pd), use the `make pd-simulator` command to compile and generate `bin/pd-simulator`
+2. In the root directory of the [PD project](https://github.com/tikv/pd), use the `make pd-dev` command to compile and generate `bin/pd-dev`
 
 ## Usage
 
-This section describes how to use the `pd-simulator` tool.
+This section describes how to use the `pd-dev` tool.
 
 ### Cases
 
 Please read related README files for more details, we support the following cases:
 
-`./pd-simulator --mode api`
+`./pd-dev --mode api`
 
-`./pd-simulator --mode tso`
+`./pd-dev --mode tso`
 
-`./pd-simulator --mode heartbeat`
+`./pd-dev --mode heartbeat`
 
-`./pd-simulator --mode simulator`
+`./pd-dev --mode simulator`
 
-`./pd-simulator --mode regions-dump`
+`./pd-dev --mode regions-dump`
 
-`./pd-simulator --mode stores-dump`
+`./pd-dev --mode stores-dump`
 
-`./pd-simulator --mode analysis`
+`./pd-dev --mode analysis`
 
-`./pd-simulator --mode backup`
+`./pd-dev --mode backup`
 
-`./pd-simulator --mode ut`
+`./pd-dev --mode ut`
 
 ### flag description
 
@@ -64,7 +64,7 @@ You can use the following command to generate a certificate for testing TLS:
 ```shell
 mkdir cert
 ./cert_opt.sh generate cert
-./bin/pd-simulator --mode api -http-cases GetRegionStatus-1+1,GetMinResolvedTS-1+1 -client 1 -debug true -cacert ./cert/ca.pem -cert ./cert/pd-server.pem  -key ./cert/pd-server-key.pem
+./bin/pd-dev --mode api -http-cases GetRegionStatus-1+1,GetMinResolvedTS-1+1 -client 1 -debug true -cacert ./cert/ca.pem -cert ./cert/pd-server.pem  -key ./cert/pd-server-key.pem
 ./cert_opt.sh cleanup cert
 rm -rf cert
 ```
