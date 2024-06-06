@@ -17,7 +17,6 @@ package simulator
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"sync"
 
@@ -170,8 +169,7 @@ type AddNode struct{}
 // Run implements the event interface.
 func (*AddNode) Run(raft *RaftEngine, _ int64) bool {
 	config := raft.storeConfig
-	nodes := raft.conn.getNodes()
-	id, err := nodes[0].client.AllocID(context.TODO())
+	id, err := raft.conn.firstNode().client.AllocID(context.Background())
 	if err != nil {
 		simutil.Logger.Error("alloc node id failed", zap.Error(err))
 		return false
@@ -204,13 +202,12 @@ type DownNode struct{}
 
 // Run implements the event interface.
 func (*DownNode) Run(raft *RaftEngine, _ int64) bool {
-	nodes := raft.conn.getNodes()
-	if len(nodes) == 0 {
+	nodesNum := len(raft.conn.Nodes)
+	if nodesNum == 0 {
 		simutil.Logger.Error("can not find any node")
 		return false
 	}
-	i := rand.Intn(len(nodes))
-	node := nodes[i]
+	node := raft.conn.firstNode()
 	if node == nil {
 		simutil.Logger.Error("node is not existed", zap.Uint64("node-id", node.Id))
 		return false

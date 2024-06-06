@@ -62,3 +62,12 @@ func (c *Connection) getNodes() []*Node {
 	}
 	return nodes
 }
+
+func (c *Connection) firstNode() *Node {
+	for _, n := range c.Nodes {
+		if n.GetNodeState() != metapb.NodeState_Removed {
+			return n
+		}
+	}
+	return nil
+}
