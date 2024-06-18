@@ -188,6 +188,8 @@ func (*AddNode) Run(raft *RaftEngine, _ int64) bool {
 
 	raft.conn.Nodes[s.ID] = n
 	n.raftEngine = raft
+	n.client = NewRetryClient(n.client)
+
 	err = n.Start()
 	if err != nil {
 		delete(raft.conn.Nodes, s.ID)

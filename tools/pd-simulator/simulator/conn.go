@@ -16,6 +16,7 @@ package simulator
 
 import (
 	"github.com/pingcap/kvproto/pkg/metapb"
+	pd "github.com/tikv/pd/client"
 	"github.com/tikv/pd/tools/pd-simulator/simulator/cases"
 	"github.com/tikv/pd/tools/pd-simulator/simulator/config"
 )
@@ -25,6 +26,8 @@ type Connection struct {
 	pdAddr string
 	Nodes  map[uint64]*Node
 }
+
+var sd pd.ServiceDiscovery
 
 // NewConnection creates nodes according to the configuration and returns the connection among nodes.
 func NewConnection(simCase *cases.Case, pdAddr string, storeConfig *config.SimConfig) (*Connection, error) {
