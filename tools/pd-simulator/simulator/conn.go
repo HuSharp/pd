@@ -15,20 +15,26 @@
 package simulator
 
 import (
+	"context"
+	"time"
+
 	"github.com/pingcap/kvproto/pkg/metapb"
+	"github.com/tikv/pd/pkg/cache"
 	"github.com/tikv/pd/tools/pd-simulator/simulator/cases"
 	"github.com/tikv/pd/tools/pd-simulator/simulator/config"
 )
 
 // Connection records the information of connection among nodes.
 type Connection struct {
-	Nodes map[uint64]*Node
+	Nodes       map[uint64]*Node
+	healthCache *cache.TTLUint64
 }
 
 // NewConnection creates nodes according to the configuration and returns the connection among nodes.
 func NewConnection(simCase *cases.Case, storeConfig *config.SimConfig) (*Connection, error) {
 	conn := &Connection{
-		Nodes: make(map[uint64]*Node),
+		Nodes:       make(map[uint64]*Node),
+		healthCache: cache.NewIDTTL(context.Background(), 10*time.Second, 10*time.Second),
 	}
 
 	for _, store := range simCase.Stores {
@@ -43,12 +49,17 @@ func NewConnection(simCase *cases.Case, storeConfig *config.SimConfig) (*Connect
 }
 
 func (c *Connection) nodeHealth(storeID uint64) bool {
+	if health, ok := c.healthCache.Get(storeID); ok {
+		return health.(bool)
+	}
 	n, ok := c.Nodes[storeID]
 	if !ok {
 		return false
 	}
 
-	return n.GetNodeState() == metapb.NodeState_Preparing || n.GetNodeState() == metapb.NodeState_Serving
+	health := n.GetNodeState() == metapb.NodeState_Preparing || n.GetNodeState() == metapb.NodeState_Serving
+	c.healthCache.Put(storeID, health)
+	return health
 }
 
 func (c *Connection) getNodes() []*Node {
