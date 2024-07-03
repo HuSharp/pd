@@ -234,6 +234,7 @@ func TestPrepareChecker(t *testing.T) {
 	re.NoError(err)
 	err = pd2.Run()
 	re.NoError(err)
+	re.NotEmpty(cluster.WaitLeader())
 	// waiting for synchronization to complete
 	time.Sleep(3 * time.Second)
 	leaderServer = cluster.GetLeaderServer()
@@ -283,6 +284,7 @@ func TestPrepareCheckerWithTransferLeader(t *testing.T) {
 	re.NoError(err)
 	err = pd2.Run()
 	re.NoError(err)
+	re.NotEmpty(cluster.WaitLeader())
 	// waiting for synchronization to complete
 	time.Sleep(3 * time.Second)
 	leaderServer = cluster.GetLeaderServer()
