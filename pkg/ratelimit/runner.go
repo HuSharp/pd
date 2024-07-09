@@ -113,6 +113,7 @@ func (cr *ConcurrentRunner) Start() {
 		for {
 			select {
 			case task := <-cr.taskChan:
+				cr.wg.Add(1)
 				if cr.limiter != nil {
 					token, err := cr.limiter.AcquireToken(context.Background())
 					if err != nil {
@@ -145,6 +146,7 @@ func (cr *ConcurrentRunner) Start() {
 }
 
 func (cr *ConcurrentRunner) run(task *Task, token *TaskToken) {
+	defer cr.wg.Done()
 	start := time.Now()
 	task.f()
 	if token != nil {
