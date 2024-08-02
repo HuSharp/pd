@@ -94,3 +94,6 @@ jobs:
           file: ./covprofile
           flags: unittests
           name: codecov-umbrella
+      - name: Run CTRF annotations
+        run: npx github-actions-ctrf check_report.json
+        if: always()
